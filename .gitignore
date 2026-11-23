@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+
+.env
+data/cookies/
+data/headers/
+data/responses/login*.json
+data/responses/refresh*.json
+data/responses/r6.json
+data/responses/r7.json
+data/responses/r8.json
+data/responses/v.json
+data/responses/neg.json
+logs/*.log
+preopen_cron.log

@@ -1,0 +1,46 @@
+{
+ "t": 1795499320,
+ "kstNow": "2026-11-24 05:48:40",
+ "bm": {
+  "ksp": -3.31,
+  "ksq": -1.58,
+  "kspPrd": -26.25,
+  "ksqPrd": -25.17
+ },
+ "cmpl": {
+  "asr": 76.06823364165636,
+  "currWto": 4.51,
+  "avgWto": 27.951428571428572,
+  "wtoViols": 1,
+  "expWtoViols": 1
+ },
+ "bs": null,
+ "bs_updated": null,
+ "ords": null,
+ "ords_diff": {
+  "added": [],
+  "removed": [],
+  "updated": {},
+  "ords_chgd": {}
+ },
+ "pos": null,
+ "pos_diff": {
+  "added": [],
+  "removed": [],
+  "updated": {},
+  "ords_chgd": {}
+ },
+ "tags": {
+  "A090460": [
+   "SmallCap"
+  ]
+ },
+ "noPosPrcs": {},
+ "msecs": null,
+ "msecs_diff": {
+  "added": [],
+  "removed": [],
+  "updated": {},
+  "ords_chgd": {}
+ }
+}

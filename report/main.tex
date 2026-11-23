@@ -1,0 +1,419 @@
+\documentclass[9pt]{article}
+\usepackage{dart}
+\usetikzlibrary{arrows.meta,positioning,calc}
+% ---------------------------------------------------------------- cover strings
+\newcommand{\covertitle}{pytimefolio: a Python API wrapper for the Road to Fund Manager competition}
+\newcommand{\covertitlelines}{2}
+\newcommand{\coversubtitle}{Measured: one reused connection, a 15-minute token and a 3-second poll}
+% ---------------------------------------------------------------- local helpers
+\newcommand{\seclabel}{\par\Needspace{9\baselineskip}\vspace{6pt}}
+\newcommand{\tabfont}{\fontsize{7.5}{9.4}\selectfont}
+\newcommand{\code}[1]{{\ttfamily\detokenize{#1}}}
+\newcommand{\numtile}[2]{\begin{minipage}[t]{43mm}{\color{navy}\fontsize{17}{19}\selectfont\bfseries #1\par}\vspace{1pt}{\fontsize{7.3}{8.8}\selectfont\color{body}#2\par}\end{minipage}}
+\newcommand{\verdict}[1]{\par\vspace{2pt}\noindent{\setlength{\fboxsep}{3pt}\colorbox{navyXL}{\parbox{\dimexpr\linewidth-6pt}{\fontsize{8.5}{11}\selectfont\RaggedRight\textbf{\color{navy}Design decision:} #1}}}\par\vspace{2pt}}
+\newcommand{\vS}[1]{\cellcolor{navy}\textcolor{white}{\textbf{#1}}}
+\newcommand{\vN}[1]{\cellcolor{navyXL}\textcolor{greyD}{#1}}
+\setlength{\tabcolsep}{3pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\arraystretch}{1.12}
+\begin{document}
+% =====================================================================================================
+% PAGE 1 (COVER)
+% =====================================================================================================
+\input{cover.tex}\par
+{\color{navy}\fontsize{10}{12.8}\selectfont\bfseries Timefolio publishes no API for its Road to Fund Manager contest, so we reproduced the requests its web client makes and measured how the server behaves. A query takes 16.0ms on a reused connection and 106.5ms on a new one. The access token lasts 900 seconds and the server accepts it for about five minutes after expiry; the refresh cookie expires seven days after login and is never extended. The server does not push live data: the client asks every 3 seconds, and receives a 577-byte delta instead of the 9,915-byte snapshot only when it echoes the exact \code{t} of the previous reply on the same connection. An open WebSocket keeps working after its token expires, but a new connection needs a fresh token. The organiser allows automated orders but may block an IP address that sends 100 or more orders a day. Orders follow in Section 3, after tests during market hours.\par}
+\vspace{4pt}
+
+\figblock[wide]{1}{Each of the four layers was measured, and each measurement fixes one design decision for the wrapper}[What we found per layer and what the wrapper does about it; measured before the open on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{26mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{62mm}}
+\thd{Layer} & \thd{Finding} & \thd{Wrapper design}\\
+\textbf{2.1 Transport} & HTTP/2 behind an nginx front end; no HTTP/3. Of 106.5ms for a new connection, DNS takes 49.3ms and TLS 28.9ms. A reused connection takes 16.0ms. The WebSocket runs on a second connection & One HTTP/2 session for REST and one WebSocket, both kept open for the life of the process. No connections by IP address\\\rowsep
+\textbf{2.2 Authentication} & JWT in the response body (900s) plus an HttpOnly refresh cookie (7 days). The cookie alone renews the token; renewal neither extends nor rotates it. About 5 minutes of tolerance after expiry. A second login leaves the browser session working & Refresh at 12 minutes or on a 401 carrying \code{invalid_token}; log in again with the stored credentials before day 7\\\rowsep
+\textbf{2.3 Queries} & Bearer header. The login reply lists every portfolio. A non-trading date returns another day's data without an error. The business day rolls over between 06:02 and 07:07 KST; orders run from 09:00 to 15:20 & Dates come from the server's \code{currBizDay}. Portfolios are chosen by contest ID, reset flag and end date\\\rowsep
+\textbf{2.4 Real-time} & SignalR hub with no server push; the client polls every 3s. Deltas only when \code{lastT} matches the previous \code{t} on the connection. \code{t} runs 32,400s ahead of Unix time. An open connection outlives its token; a new one needs a valid token & One request in flight at a time. A snapshot replaces the state, a delta updates it. \code{t} is echoed, never interpreted. Refresh the token before reconnecting\\
+\end{tabularx}}}{Measured 05:38 to 07:34 KST on 24 Nov 2026, before the market opened, with one account (portfolio 27032). Response times may differ under market-hours load.}{contest.timefolio.net, DART Quant Team}
+
+\vspace{3pt}
+{\fontsize{7}{8.6}\selectfont\color{greyD}These results describe the server as observed on one morning, without documentation from the organiser; the wrapper should check them at run time, since the server can change. No other participant's account data was requested. Code: \href{https://github.com/chlanstjr0301/pytimefolio}{\code{github.com/chlanstjr0301/pytimefolio}}.\par}
+\clearpage
+% =====================================================================================================
+% 1. INTRODUCTION
+% =====================================================================================================
+\seclabel
+\claim{1\quad With no published API, the server's behaviour has to be measured from the requests its own web client makes}
+
+\lead{We are building an API wrapper so that a program, rather than a person at a browser, can trade in the contest.} Road to Fund Manager is a paper-trading contest run by Timefolio Asset Management; participants enter tickers and target weights on a web page. An algorithmic strategy needs to log in, read balances, follow positions in real time and place orders on its own. The wrapper handles that communication so the strategy code never deals with tokens, sockets or date formats.
+
+\lead{The organiser publishes no API, so every assumption the wrapper makes has to come from observation.} That covers how authentication works, how long tokens last, how dates are interpreted and what the real-time messages contain. Guessing is risky here because the server rarely complains: as Section 2.3 shows, a wrong date returns another day's data with HTTP 200, so a wrong assumption produces wrong numbers rather than an error.
+
+\lead{The organiser allows automated orders within two limits.} In reply to our enquiry on 24 Nov 2026, the organiser stated that it provides no official API and does not prohibit automating orders with scripts or web drivers. An account that places 100 or more orders in a day may have its IP address blocked, and so may traffic that loads the system in a short time; the organiser recommends a delay between requests. We therefore ran no load or rate-limit tests, and the wrapper will cap its own orders per day.
+
+\lead{We worked in three steps.} First we observed: after logging in we extracted API paths and real-time method names from the JavaScript the site serves, and recorded WebSocket messages in the browser's developer tools. Then we reproduced each request with curl to read headers, cookies and response bodies; for the WebSocket, which curl cannot handle, we implemented the SignalR protocol in Python without a client library. Where a behaviour had more than one explanation, such as token expiry or the condition for a delta, we wrote down the competing hypotheses and designed requests that would give a different result under each.
+
+\lead{Section 2 covers what can be tested while the market is closed.} That is transport (2.1), authentication (2.2), queries (2.3) and real-time data (2.4). Orders execute, so they can only be tested during market hours and follow in Section 3. \figref{2} gives the test setup. Real-time requests kept the browser's 3-second pace, and we did not query other participants' portfolio IDs.
+
+\figblock{2}{Test setup}{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{22mm} >{\RaggedRight\arraybackslash}X}
+\thd{Item} & \thd{Value}\\
+Time & 05:38 to 07:34 KST, 24 Nov 2026, before the market opened; the server's business day (\code{currBizDay}) changed from 23 Nov to 24 Nov during this window\\\rowsep
+Client & WSL (Ubuntu) on Windows 11; curl with HTTP/2; Python 3.14, httpx 0.28.1, websockets 17.4\\\rowsep
+Account & One participant account; live portfolio 27032 (RFM round 13, 12 Oct to 30 Nov 2026)\\\rowsep
+Server & \code{https://contest.timefolio.net} (REST under \code{/api}, SignalR at \code{/hubs/main})\\\rowsep
+Code & \href{https://github.com/chlanstjr0301/pytimefolio}{\code{https://github.com/chlanstjr0301/pytimefolio}}\\
+\end{tabularx}}}{Network timings hold for this client and time of day only.}{DART Quant Team}
+
+% =====================================================================================================
+% 2.1 TRANSPORT
+% =====================================================================================================
+\seclabel
+\claim{2.1\quad The server speaks HTTP/2, and reusing one connection cuts a query from 106.5ms to 16.0ms}
+
+\lead{The site runs on HTTP/2 and does not offer HTTP/3.} The browser talks to the server over HTTP/2. curl negotiates HTTP/2 with \code{--http2} and also gets answers over HTTP/1.1. Responses carry no \code{alt-svc} header, so the server does not advertise HTTP/3 (QUIC).
+
+\lead{A query passes through five layers on the way to the server, and only the first request on a connection pays for the lower three.} \figref{3} shows the layers for the two channels the wrapper uses, with the time each layer took. For a REST query the client first resolves \code{contest.timefolio.net} to an IPv4 address (DNS), then opens a TCP connection, which costs one round trip. The TLS handshake follows: the client names the host it wants (SNI), checks that the certificate was issued to that name, and agrees on HTTP/2 through ALPN, which is why curl reports HTTP/2 without any further exchange. The query itself then travels as one HTTP/2 stream carrying the \code{Authorization: Bearer} header. On the server side an nginx front end receives it (its own error page appears when a request body is malformed, Section 2.2) and passes it to the ASP.NET application, whose error messages and SignalR hub identify it. Later queries open new streams on the same connection, so they skip DNS, TCP and TLS altogether.
+
+The real-time channel starts the same way but ends on a different connection. The client first sends the SignalR negotiation as an ordinary HTTP/2 POST, then opens a second TCP and TLS connection and sends an HTTP/1.1 request with \code{Upgrade: websocket}; the server answers \code{101 Switching Protocols}, and from then on both sides exchange WebSocket frames. Each frame carries SignalR messages, JSON objects ended by the byte 0x1E (Section 2.4). The second connection is a property of our client: the Python \code{websockets} library upgrades over HTTP/1.1 only.
+
+\Needspace{70mm}\figblock[wide]{3}{REST queries share one HTTP/2 connection and the live feed runs on a second, upgraded connection; a reused connection skips the three lower layers, which take 89ms of the 106.5ms}[Protocol layers per channel (left) and time per stage of a query on a new and a reused connection (right), medians of 10 runs]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  lay/.style={draw=greyM,line width=0.4pt,fill=white,minimum height=8.6mm,text width=36mm,align=left,inner sep=1.2mm,font=\fontsize{6.6}{7.9}\selectfont,anchor=north west},
+  lbl/.style={minimum height=8.6mm,text width=19mm,align=left,inner sep=0.8mm,font=\fontsize{6.8}{8}\selectfont\bfseries\color{navy},anchor=north west},
+  hdr/.style={fill=navy,text=white,minimum height=5.5mm,text width=36mm,align=center,inner sep=0.8mm,font=\fontsize{7}{8}\selectfont\bfseries,anchor=north west},
+  seg/.style={draw=white,line width=0.3pt,minimum height=6mm,inner sep=0,anchor=west,font=\fontsize{6.4}{7.4}\selectfont}]
+% ---- column headers
+\node[hdr] at (21,0) {REST queries};
+\node[hdr] at (60,0) {Real-time feed (SignalR)};
+% ---- server row
+\node[lbl] at (0,-6.5) {Server};
+\node[lay,fill=navyXL,text width=75.2mm] at (21,-6.5) {nginx front end $\rightarrow$ ASP.NET application: REST API under \code{/api}, SignalR hub at \code{/hubs/main}};
+% ---- layers
+\foreach \i/\L/\A/\B in {%
+ 1/{Application}/{JSON request and reply, e.g.\ \code{Portfolio/Violations}}/{SignalR JSON messages ended by 0x1E: \code{RequestPortfolio}, \code{ReceivePortfolio}, ping},
+ 2/{Authentication}/{\code{Authorization: Bearer} JWT on every request}/{Bearer JWT checked at negotiation and connection only},
+ 3/{HTTP}/{HTTP/2: each query is one stream on a shared connection}/{HTTP/2 POST for negotiation, then HTTP/1.1 \code{Upgrade: websocket}, 101, WebSocket frames},
+ 4/{TLS}/{Certificate for \code{contest.timefolio.net}; ALPN selects h2. 28.9ms}/{Same certificate, separate handshake},
+ 5/{TCP}/{One connection, kept open. 11.1ms (one round trip)}/{Second connection, kept open}} {
+  \node[lbl] at (0,{-6.5-9.6*\i}) {\L};
+  \node[lay] at (21,{-6.5-9.6*\i}) {\A};
+  \node[lay] at (60,{-6.5-9.6*\i}) {\B};
+}
+\node[lbl] at (0,-64.1) {Name lookup};
+\node[lay,text width=75.2mm] at (21,-64.1) {DNS: \code{contest.timefolio.net} $\rightarrow$ IPv4 address, once per connection. 49.3ms};
+\draw[navy,line width=0.6pt,{Stealth[length=1.4mm]}-{Stealth[length=1.4mm]}] (101.5,-72.5) -- node[right,font=\fontsize{6.4}{7.6}\selectfont,text=greyD,align=left]{paid only by the\\first request on\\a connection} (101.5,-45);
+% ---- timing bars (right panel)
+\begin{scope}[shift={(118,-14)}]
+ \node[anchor=west,font=\fontsize{7}{8}\selectfont\bfseries] at (0,6) {Time per query (ms)};
+ \def\sc{0.5}
+ % new connection
+ \node[anchor=east,font=\fontsize{6.6}{7.8}\selectfont,text width=14mm,align=right] at (-1,-2) {New\\connection};
+ \fill[navyXL] (0,-5) rectangle ({49.3*\sc},1);
+ \fill[navyL]  ({49.3*\sc},-5) rectangle ({60.4*\sc},1);
+ \fill[navyM]  ({60.4*\sc},-5) rectangle ({89.3*\sc},1);
+ \fill[navy]   ({89.3*\sc},-5) rectangle ({106.5*\sc},1);
+ \node[font=\fontsize{6.2}{7}\selectfont] at ({24.6*\sc},-2) {DNS 49.3};
+ \node[font=\fontsize{6.2}{7}\selectfont,text=white] at ({74.8*\sc},-2) {TLS 28.9};
+ \node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at ({54.8*\sc},1.2) {TCP 11.1};
+ \node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at ({97.9*\sc},1.2) {server 16.7};
+ \node[anchor=west,font=\fontsize{6.8}{8}\selectfont\bfseries] at ({106.5*\sc+1},-2) {106.5};
+ % reused connection
+ \node[anchor=east,font=\fontsize{6.6}{7.8}\selectfont,text width=14mm,align=right] at (-1,-16) {Reused\\connection};
+ \fill[navy] (0,-19) rectangle ({16.0*\sc},-13);
+ \node[anchor=west,font=\fontsize{6.8}{8}\selectfont\bfseries] at ({16.0*\sc+1},-16) {16.0};
+ \node[anchor=west,font=\fontsize{6.2}{7.4}\selectfont,text=greyD,text width=36mm] at ({16.0*\sc+9},-16) {11.1 round trip + about 5 on the server};
+ % axis
+ \draw[greyM,line width=0.4pt] (0,-23) -- ({110*\sc},-23);
+ \foreach \v in {0,25,50,75,100} { \draw[greyM] ({\v*\sc},-23) -- ({\v*\sc},-24); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at ({\v*\sc},-24) {\v}; }
+\end{scope}
+\end{tikzpicture}}{Layer times are medians from \figref{4}. The WebSocket's second connection reflects our client: the Python \code{websockets} library upgrades over HTTP/1.1 only. The nginx front end is identified by its error page, the ASP.NET application by its error messages and its SignalR hub.}{DART Quant Team}
+
+\lead{Most of the cost of a new connection is DNS and TLS, and a reused connection avoids both.} We sent five requests to the same query endpoint (\code{Portfolio/Violations}) in one curl run and repeated the run ten times at one-second intervals. The first request in each run pays for the DNS lookup, the TCP connection and the TLS handshake; the other four reuse the connection (\figref{4}).
+
+\figblock{4}{DNS and TLS take 78ms of the 106.5ms a new connection costs; a reused connection answers in 16.0ms}[Time per stage, 10 runs (40 reused requests), ms]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X R{13mm} R{24mm} R{11mm} >{\RaggedRight\arraybackslash}p{40mm}}
+\thd{Stage} & \thd{Median} & \thd{Range} & \thd{SD} & \thd{Reading}\\
+DNS lookup & 49.3 & 36.6 to 94.1 & 18.0 & Largest source of variation\\\rowsep
+TCP connect & 11.1 & 9.4 to 12.3 & 0.9 & One handshake, i.e.\ one round trip (RTT)\\\rowsep
+TLS handshake & 28.9 & 17.8 to 40.4 & 7.9 & Two to three RTTs\\\rowsep
+Server, to first byte & 16.7 & 15.7 to 19.8 & 1.5 & \\\rowsep
+\textbf{First request, total} & \textbf{106.5} & 80.5 to 156.9 & 21.2 & \\\rowsep
+\textbf{Reused request, total} & \textbf{16.0} & 14.8 to 20.3 & 1.3 & 11ms RTT plus about 5ms on the server\\
+\end{tabularx}}}{curl's \code{time_*} values are cumulative from the start of the request; stage times are differences between adjacent values. All 50 requests returned HTTP 200. 06:03 KST, 24 Nov 2026.}{DART Quant Team}
+
+The TCP stage varies by only 0.9ms, so the network path itself is stable. Taking the 11.1ms round trip out of the 16.0ms reused request leaves about 5ms of server time; a wrapper request is almost all network latency, and the server is not the bottleneck.
+
+\lead{We discarded an earlier run of the same test because it mixed in failed requests.} In that run the last four rounds of reused requests averaged 12.2ms against 17.8ms for the others. It used a token that had expired at 05:56:33, and we had not recorded status codes. 12.2ms is the round trip plus about 1ms, which fits a server rejecting the token with a 401 before touching any data (Section 2.2). \figref{4} uses only the repeat run, with a valid token and a status code on every request.
+
+\lead{We do not connect by IP address.} Connecting to the server's IPv4 address would skip the DNS lookup, but the TLS certificate is issued to \code{contest.timefolio.net}, so hostname verification would have to be bypassed, and the address can change without notice. With a reused connection the lookup happens once, at start-up, so the saving would be a single 49ms.
+\verdict{Keep one HTTP/2 client session open for the life of the process (\code{httpx.AsyncClient(http2=True)}). The roughly 90ms of connection cost is then paid once, at start-up.}
+
+% =====================================================================================================
+% 2.2 AUTHENTICATION
+% =====================================================================================================
+\seclabel
+\claim{2.2\quad Authentication has two tiers, a 900-second access token and a refresh cookie fixed at seven days, and the cookie alone renews the token}
+
+\lead{Logging in returns the access token and the list of portfolios in one reply.} \code{POST /api/Auth/Login} with \texttt{\{"email", "password"\}} returns HTTP 200, a 435-character JWT access token (\code{accessToken}), six portfolios (\code{pfs}), 16 contests (\code{ctsts}) and the server's current business day (\code{currBizDay}). The same reply carries the participant's phone number and date of birth, so a wrapper that logs traffic should store only the fields it needs from this response.
+
+\lead{The login reply sets five credentials with different lifetimes (\figref{5}).} Only the first two matter to the wrapper.
+
+\figblock[wide]{5}{The access token lasts 15 minutes and the refresh cookie 7 days; the wrapper manages these two}[Credentials returned by a login at 05:38:54 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{24mm} >{\RaggedRight\arraybackslash}p{19mm} >{\RaggedRight\arraybackslash}p{32mm} >{\RaggedRight\arraybackslash}p{46mm} >{\RaggedRight\arraybackslash}X}
+\thd{Name} & \thd{Carried in} & \thd{Lifetime} & \thd{Attributes} & \thd{Used for}\\
+\code{accessToken} & Response body & \textbf{900s} (JWT \code{exp - iat}) & JWT; claims include \code{Id}, \code{exp}, \code{iat}, \code{nbf}, \code{role} & \code{Authorization: Bearer} header on every API call\\\rowsep
+\code{refreshToken} & Cookie & \textbf{7 days} (to 05:38 KST, 1 Dec) & HttpOnly, Secure, SameSite=Strict, path \code{/} & Getting a new access token from \code{Auth/SilentRefresh}\\\rowsep
+\code{asset_token} & Cookie & 1 hour & HttpOnly, path \code{/assets/app/} & Downloading the page code served only to logged-in users\\\rowsep
+\code{userid} & Cookie & 7 days & Not HttpOnly & User ID read by the page's JavaScript\\\rowsep
+\code{nxdid} & Cookie & 1 year & HttpOnly, SameSite=Lax & Probably a device identifier\\
+\end{tabularx}}}{Cookie values were not recorded, only names and attributes. The purpose of \code{nxdid} is inferred from its name and lifetime.}{contest.timefolio.net response headers, DART Quant Team}
+
+\lead{Renewal needs only the refresh cookie, and it does not move the seven-day deadline.} \code{POST /api/Auth/SilentRefresh} with the cookie and no \code{Authorization} header returns HTTP 200 and a new access token, in a body shaped like the login reply. The refresh cookie's expiry was 1796071134 (20:38:54 UTC, 30 Nov) both before and after the call, and the reply set no new \code{refreshToken}. Renewal therefore neither slides the expiry forward nor rotates the token, so several processes can share one cookie without invalidating each other.
+
+\lead{The server keeps accepting an expired access token for about five minutes.} We repeated the same query with a token issued at 05:41:33 and expiring at 05:56:33 (\figref{6}). It still worked 3.5 minutes after expiry and was refused 5 minutes 37 seconds after. The tolerance therefore lies between 3.5 and 5.6 minutes, consistent with the five-minute default clock skew in ASP.NET's JWT validation, and the 401 message has the wording of Microsoft's .NET identity library.
+
+\figblock{6}{Accepted 3.5 minutes after expiry, refused 5 minutes 37 seconds after; the refresh cookie runs for seven days regardless}[Lifetime of one access token issued at 05:41:33 KST, and the refresh cookie from the 05:38:54 login]{%
+\begin{tikzpicture}[xscale=0.86,x=1mm,y=1mm,lab/.style={font=\fontsize{6.6}{7.8}\selectfont}]
+\node[lab,anchor=east,text width=17mm,align=right] at (-1,0) {Access token};
+\fill[navy]   (16.33,-2.5) rectangle (85.33,2.5);
+\fill[navyL]  (85.33,-2.5) rectangle (108.33,2.5);
+\fill[navyXL] (108.33,-2.5) rectangle (119.60,2.5);
+\node[lab,text=white] at (50.83,0) {valid: 900 s from issue};
+\node[lab] at (96.83,0) {tolerance};
+\node[lab,text=greyD] at (114.57,0) {refused};
+\node[lab,anchor=south,text=greyD] at (16.33,2.8) {issued 05:41:33};
+\node[lab,anchor=south,text=greyD] at (85.33,2.8) {exp 05:56:33};
+\fill[navy] (101.20,5.6) circle (0.9);
+\node[lab,anchor=south] at (101.20,6.8) {200 (about 06:00)};
+\draw[navy,line width=0.8pt] (110.27,11.6) -- (112.07,13.4) (110.27,13.4) -- (112.07,11.6);
+\node[lab,anchor=south] at (111.17,13.8) {401 at 06:02:10};
+\draw[greyM,line width=0.3pt,dashed] (101.20,4.7) -- (101.20,2.5) (111.17,11.4) -- (111.17,2.5);
+\node[lab,anchor=east,text width=17mm,align=right] at (-1,-11) {Refresh cookie};
+\fill[navyM] (4.14,-13) rectangle (119.60,-9);
+\draw[navyM,line width=1pt,-{Stealth[length=2mm]}] (119.60,-11) -- (125.60,-11);
+\node[lab,text=white,anchor=west] at (6.14,-11) {7 days from login (to 05:38:54, 1 Dec); renewal at 05:41:33 did not extend it};
+\draw[greyM,line width=0.4pt] (0,-21) -- (119.60,-21);
+\draw[greyM] (0.00,-21) -- (0.00,-22); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (0.00,-22) {05:38};
+\draw[greyM] (18.40,-21) -- (18.40,-22); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (18.40,-22) {05:42};
+\draw[greyM] (36.80,-21) -- (36.80,-22); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (36.80,-22) {05:46};
+\draw[greyM] (55.20,-21) -- (55.20,-22); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (55.20,-22) {05:50};
+\draw[greyM] (73.60,-21) -- (73.60,-22); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (73.60,-22) {05:54};
+\draw[greyM] (92.00,-21) -- (92.00,-22); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (92.00,-22) {05:58};
+\draw[greyM] (110.40,-21) -- (110.40,-22); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (110.40,-22) {06:02};
+\end{tikzpicture}}{The 401 carried \code{www-authenticate: Bearer error="invalid_token", error_description="The token expired at '11/23/2026 20:56:33'"} (UTC). Token lifetime read from the decoded JWT (\code{exp}, \code{iat}); cookie expiry from \code{Set-Cookie} before and after renewal.}{DART Quant Team}
+
+\lead{A malformed request and a failed login get different errors from different parts of the stack.} A request body with broken JSON (a raw carriage return inside a string) drew an HTML 400 page from the nginx front end. Valid JSON with wrong credentials drew a 401 from the API. A 400 points to a bug in the code that built the request and will fail again on retry; a 401 is cured by a token refresh or a new login, so the wrapper treats them differently.
+
+\lead{Logging in again leaves the existing session working.} After a second login on the same account, the first session's refresh cookie still renewed its token. The browser, already logged in, also stayed logged in after a page reload, so the wrapper and the web page can be used at the same time.
+\verdict{Refresh the access token through \code{SilentRefresh} 12 minutes after issue, or at once on a 401 whose \code{www-authenticate} header contains \code{invalid_token}. Log in again with the stored credentials before the refresh cookie's seven days run out. Raise a 400 as an error without retrying. The five-minute tolerance is a server setting that can change, so the schedule does not rely on it.}
+
+% =====================================================================================================
+% 2.3 QUERIES
+% =====================================================================================================
+\seclabel
+\claim{2.3\quad Queries authenticate with a Bearer header, and a non-trading date returns another day's data without an error}
+
+\lead{Every REST call has the form \texttt{/api/\{area\}/\{name\}}.} The public JavaScript bundle names only the ten \code{Auth} paths. The trading screen's code lives under \code{/assets/app/}, which is served only with the \code{asset_token} cookie (\figref{5}), so we took the other paths from the code downloaded after login (\figref{7}). The administrator areas (\code{Master}, \code{Admin}) are outside the wrapper's scope.
+
+\figblock{7}{The paths a wrapper needs fall in five areas: Auth, Portfolio, Contest, Analysis and Util}[Main REST paths extracted from the web client's code]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{17mm} >{\RaggedRight\arraybackslash}X}
+\thd{Area} & \thd{Paths (selection)}\\
+Auth & \code{Login}, \code{SilentRefresh}, \code{Logout}\\\rowsep
+Portfolio & Orders: \code{AddOrder}, \code{ModifyOrder}, \code{CancelOrder}, \code{DeleteOrder}, \code{CancelOrderBatch}, \code{ValidateProduct}, \code{OrderLogs}, \code{Orders}\\
+ & State: \code{PfBs}, \code{Session}, \code{Trades}, \code{Fills}, \code{FillAggrs}, \code{Universe}, \code{Violations}, \code{ViolationsSummary}, \code{PerfCharts}\\\rowsep
+Contest & \code{List}, \code{PfList}, \code{TopRankDetail}, \code{TopPick}\\\rowsep
+Analysis & \code{PfAsOf}, \code{PrftByProd}, \code{HistPosChart}, \code{TrendChart}, \code{ActivityChart}\\\rowsep
+Util & \code{SearchProducts}\\
+\end{tabularx}}}{Only the path names are confirmed here; request formats for the order paths will be captured during market hours for Section 3.}{contest.timefolio.net web client code, DART Quant Team}
+
+\lead{A Bearer header is enough; queries need no cookies.} A \code{GET} to \code{Portfolio/Violations} for portfolio 27032 on 23 Nov returned HTTP 200 with the access token in the header and 401 without it. Our own finished portfolio from an earlier round (19252, round 11) can be queried the same way.
+
+\lead{The live portfolio has to be chosen by contest ID, reset flag and end date, because two portfolios can share a contest name.} The \code{pfs} list gains an entry for each contest entered and each reset (\figref{8}). Round 13 has two entries with the same contest name (\code{ctstNm}), and picking by name can return 24735, which ended with a reset.
+
+\figblock{8}{The live portfolio is the one in the contest that has not been reset and has not reached its end date}[The six entries in \code{pfs} from the login reply]{%
+{\tabfont\begin{tabularx}{\linewidth}{R{10mm} >{\RaggedRight\arraybackslash}p{25mm} >{\RaggedRight\arraybackslash}p{27mm} >{\RaggedRight\arraybackslash}p{13mm} >{\RaggedRight\arraybackslash}X}
+\thd{Id} & \thd{Contest (\code{ctstId})} & \thd{Period} & \thd{\code{invalid}} & \thd{Display status}\\
+\textbf{27032} & \textbf{Round 13 (91)} & \textbf{12 Oct to 30 Nov} & \textbf{absent} & \textbf{live}\\\rowsep
+24735 & Round 13 (91) & 1 Oct to 8 Oct & True & ended, reset\\\rowsep
+23745 & Round 12 (90) & 3 Jul to 31 Aug & absent & ended\\\rowsep
+21980 & Round 12 (90) & 1 Jul to 2 Jul & True & ended, reset\\\rowsep
+19252 & Round 11 (86) & 1 Apr to 29 May & absent & ended\\\rowsep
+18762 & Practice (1) & 5 Feb to 30 Apr & True & ended, reset\\
+\end{tabularx}}}{\code{active} is False for all six entries, including the live one. \code{invalid} appears only on reset portfolios; the other entries have no such key.}{contest.timefolio.net, DART Quant Team}
+
+Two field names mislead. \code{active} is False for all six entries, including the live 27032, so it says nothing about which portfolio is running. The reset flag is the presence of \code{invalid}, so a missing key has to be read as False. If the rule below matches anything other than exactly one portfolio, the wrapper stops instead of guessing.
+
+\par\noindent\begin{minipage}{\linewidth}\fontsize{8.5}{11}\selectfont\ttfamily
+\hspace*{4mm}select\_pf(ctstId):\\
+\hspace*{8mm}cands $\leftarrow$ \{ pf $\in$ pfs : pf.ctstId = ctstId $\wedge$ $\neg$pf.invalid $\wedge$ pf.lastD $\geq$ currBizDay \}\\
+\hspace*{8mm}return the single element of cands, else raise\end{minipage}\par
+
+\lead{The date parameter accepts any date, and the server decides which day's data to return.} We sent four dates to the same endpoint and compared the replies (\figref{9}).
+
+\figblock{9}{A weekend date returns the previous trading day, a future date the latest one, and none of them raises an error}[\code{Portfolio/Violations} replies by requested date (server business day: 23 Nov)]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{32mm} >{\RaggedRight\arraybackslash}p{17mm} >{\RaggedRight\arraybackslash}X}
+\thd{Requested date} & \thd{Reply} & \thd{Day the server used, and why we think so}\\
+22 Nov (Sunday) & 200, 400B & 20 Nov, the previous trading day; the small-cap weight is 3.21\%, against 3.33\% on 23 Nov\\\rowsep
+23 Nov (current day) & 200, 400B & 23 Nov\\\rowsep
+24 Nov (next trading day) & 200, 400B & 23 Nov, the latest; byte-for-byte identical to the 23 Nov reply\\\rowsep
+25 Dec (holiday, after the contest) & 200, 342B & None; every value is zero\\
+\end{tabularx}}}{Replies compared with \code{cmp}; where they differed, we printed the differing fields.}{DART Quant Team}
+
+The Sunday reply differs from the 23 Nov reply in one value, the weight of the portfolio's only small-cap stock (BH Co.). Its price did not change on 23 Nov (previous close and close both KRW14,840), while the portfolio's value fell 3.59\% that day. A stock whose price stays flat gains weight as the portfolio shrinks, so its 20 Nov weight should be $3.33 \times (1 - 0.0359) = 3.21$, which is the value the Sunday request returned.
+
+The server's business day also differs from the calendar after midnight. \code{currBizDay} still read 23 Nov at 06:02:10 on 24 Nov and read 24 Nov at 07:06:44, so the server moves to the next business day between those two times, well before the 09:00 open. A request made before the rollover would carry the previous day's date.
+
+\lead{Three more read endpoints give the order window, the investable universe and the position history; \code{Orders} returns nothing with the parameters we guessed.} We called five more \code{Portfolio} paths with \code{pfId} and \code{d} (\figref{10}). \code{Session} returns 09:00 to 15:20, the window in which orders execute; 15:20 is when the closing auction begins. \code{Universe} lists 2,648 investable stocks with their GICS sector, using the same eleven codes as the real-time sector weights. Some tickers mix letters and digits (\code{A0015M0}), following the Korea Exchange's newer code format, so tickers have to be handled as strings. \code{Orders} returned an empty list for 23 Nov, although the real-time feed showed a filled order on that day; the endpoint evidently expects other parameters and, like the date parameter, says nothing when it gets the wrong ones. Its real parameters will be captured from the web page.
+
+\figblock{10}{Session, Universe and Trades answer with the guessed parameters; Orders answers with an empty list, and PfBs is not exposed}[\code{Portfolio} read endpoints called with \code{pfId=27032} and \code{d} (07:33 KST, 24 Nov 2026)]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{15mm} >{\RaggedRight\arraybackslash}p{15mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{36mm}}
+\thd{Path} & \thd{Reply} & \thd{Content} & \thd{Use in the wrapper}\\
+\code{Session} & 200 & \code{hm0} 09:00, \code{hm1} 15:20 & Bounds for order start and end times\\\rowsep
+\code{Universe} & 200, 2,648 & \code{Id}, \code{nm}, \code{sec} (GICS); some tickers alphanumeric & Ticker validation, sector of each stock\\\rowsep
+\code{Trades} & 200, 62 & One record per position from entry to exit; 23 still open, matching the 23 holdings; UTC times & Position history and realised profit\\\rowsep
+\code{Orders} & 200, empty & Empty for 23 and 24 Nov, though an order filled on 23 Nov & Parameters to be captured from the web page\\\rowsep
+\code{PfBs} & 404 & Not found under \code{Portfolio}, \code{Contest} or \code{Analysis} & Not used; balances come from the real-time feed\\
+\end{tabularx}}}{GET with query parameters; \code{PfBs} also failed as a POST with a JSON body.}{DART Quant Team}
+\verdict{Fill request dates from the server's \code{currBizDay}, never from the PC clock, and refuse to place orders while \code{currBizDay} differs from the KST calendar date. When collecting history day by day, check each date against a trading calendar first, so the same day's data is not stored under several dates. Choose the portfolio with the rule above.}
+
+% =====================================================================================================
+% 2.4 REAL-TIME
+% =====================================================================================================
+\seclabel
+\claim{2.4\quad Live data arrives only when the client asks, every 3 seconds, and comes as a delta 1/17 the size of a snapshot only when the client echoes the previous t}
+
+\lead{Connecting to the SignalR hub takes four steps.} Balances, orders and sector weights come through an ASP.NET SignalR hub at \code{/hubs/main}. We implemented the connection in Python to check each step (\figref{11}).
+
+\Needspace{100mm}\figblock[wide]{11}{After an HTTP negotiation, a WebSocket connection and a handshake, the client and server exchange requests and replies}[Connection steps and message format; every message is one JSON object followed by the separator byte 0x1E]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  lane/.style={draw=navy,fill=navy,text=white,minimum width=26mm,minimum height=6mm,font=\fontsize{7.5}{9}\selectfont\bfseries},
+  msg/.style={-{Stealth[length=1.6mm]},line width=0.5pt,color=navy},
+  rmsg/.style={-{Stealth[length=1.6mm]},line width=0.5pt,color=greyD},
+  lbl/.style={font=\fontsize{6.8}{8.2}\selectfont,align=center,fill=white,inner sep=0.8pt},
+  stp/.style={font=\fontsize{6.8}{8.2}\selectfont,anchor=west,text width=56mm,align=left,text=greyD}]
+\node[lane] (C) at (0,0) {Client};
+\node[lane] (S) at (88,0) {Server};
+\draw[greyM,line width=0.4pt] (0,-3) -- (0,-75);
+\draw[greyM,line width=0.4pt] (88,-3) -- (88,-75);
+\draw[msg]  (0,-9)  -- node[lbl,above]{\code{POST /hubs/main/negotiate?negotiateVersion=1} (Bearer)} (88,-9);
+\draw[rmsg] (88,-14) -- node[lbl,above]{\code{connectionId}, \code{connectionToken} (22 chars), 3 transports} (0,-14);
+\node[stp] at (96,-11.5) {\textbf{1. Negotiate}: a plain HTTP request. WebSockets, Server-Sent Events and long polling are all offered};
+\draw[msg]  (0,-23) -- node[lbl,above]{\code{wss://.../hubs/main?id=<connectionToken>} (Authorization header)} (88,-23);
+\node[stp] at (96,-23) {\textbf{2. Connect}: browsers cannot set headers on a WebSocket and put the token in the URL; from Python the header works};
+\draw[msg]  (0,-32) -- node[lbl,above]{\texttt{\{"protocol":"json","version":1\}} 0x1E} (88,-32);
+\draw[rmsg] (88,-37) -- node[lbl,above]{\texttt{\{\}} 0x1E} (0,-37);
+\node[stp] at (96,-34.5) {\textbf{3. Handshake}: both sides agree on JSON messages};
+\draw[msg]  (0,-46) -- node[lbl,above]{type 1 \code{RequestPortfolio} \{intv:3, auto:true, lastT, d, pfId\}} (88,-46);
+\draw[rmsg] (88,-51) -- node[lbl,above]{type 1 \code{ReceivePortfolio} \{t, kstNow, ...\}} (0,-51);
+\node[lbl,fill=none,text=greyD] at (44,-56.5) {wait 3s};
+\draw[msg]  (0,-62) -- node[lbl,above]{type 1 \code{RequestPortfolio} \{..., lastT = t of previous reply\}} (88,-62);
+\draw[rmsg] (88,-67) -- node[lbl,above]{type 1 \code{ReceivePortfolio} (delta)} (0,-67);
+\node[stp] at (96,-56.5) {\textbf{4. Repeat}: the server never sends first. The client asks again 3 seconds after each reply; type 6 pings keep the connection open};
+\draw[rmsg,dashed] (88,-73) -- node[lbl,above]{type 6 (ping)} (0,-73);
+\end{tikzpicture}}{In a browser recording from 28 Oct 2026 the client sent each request 3 seconds after the previous reply. Type 1 is an invocation of a method on the other side; type 6 is a ping.}{Browser developer tools, Python implementation, DART Quant Team}
+
+\lead{The hub uses a WebSocket, but in practice the client polls.} In the browser recording the server never sends on its own; the browser asks again 3 seconds after each reply. The hub answered the same way before dawn, with replies in 20 to 84ms. A wrapper that only listens would receive nothing, so it has to send the requests itself.
+
+\lead{On the same connection, echoing the previous reply's \code{t} returns only what changed.} A request with \code{lastT=0} returns 9,915 bytes holding balances (\code{bs}), orders (\code{ords}), positions (\code{pos}) and market sector weights (\code{msecs}). A request carrying the previous reply's \code{t} as \code{lastT} returns 577 bytes in which those four fields are \code{null} and \code{pos_diff}, \code{ords_diff} and \code{msecs_diff} appear instead, each with the fields \code{added}, \code{removed}, \code{updated} and \code{ords_chgd}. The deltas were empty because the market was closed; what they hold when values change will be checked during trading hours.
+
+\lead{The server sends a delta only when \code{lastT} equals the \code{t} it last sent on that connection.} We tested three explanations: (a) a delta only when \code{lastT} matches the \code{t} last sent on this connection; (b) a delta from any recent point in time; (c) a delta remembered per account, across connections. We varied \code{lastT} over eleven requests on two connections so that each hypothesis predicted a different pattern (\figref{12}).
+
+\figblock{12}{Only an exact match with the previous t gets a delta; every other value gets the full snapshot, so hypothesis (a) holds}[Reply size by \code{lastT} sent, eleven requests 3 seconds apart on two connections, 06:06 KST on 24 Nov 2026]{%
+\begin{tikzpicture}[xscale=0.96,x=1mm,y=1mm]
+\fill[navyL] (0,0) rectangle (7,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (3.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (3.5,-0.6) {1};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (4.5,-4.6) {0};
+\fill[navy] (11,0) rectangle (18,1.63);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (14.5,2.03) {577};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (14.5,-0.6) {2};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (15.5,-4.6) {previous t};
+\fill[navyL] (22,0) rectangle (29,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (25.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (25.5,-0.6) {3};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (26.5,-4.6) {t before previous};
+\fill[navyL] (33,0) rectangle (40,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (36.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (36.5,-0.6) {4};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (37.5,-4.6) {previous t $-$ 1};
+\fill[navyL] (44,0) rectangle (51,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (47.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (47.5,-0.6) {5};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (48.5,-4.6) {previous t $-$ 60};
+\fill[navyL] (55,0) rectangle (62,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (58.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (58.5,-0.6) {6};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (59.5,-4.6) {previous t $-$ 3,600};
+\fill[navyL] (66,0) rectangle (73,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (69.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (69.5,-0.6) {7};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (70.5,-4.6) {previous t + 100};
+\fill[navy] (77,0) rectangle (84,1.63);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (80.5,2.03) {577};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (80.5,-0.6) {8};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (81.5,-4.6) {previous t};
+\fill[navyL] (88,0) rectangle (95,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (91.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (91.5,-0.6) {8$'$};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (92.5,-4.6) {same value again};
+\fill[navyL] (99,0) rectangle (106,28.00);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (102.5,28.40) {9,915};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (102.5,-0.6) {9};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (103.5,-4.6) {last t of old connection};
+\fill[navy] (110,0) rectangle (117,1.63);
+\node[font=\fontsize{6.2}{7}\selectfont,anchor=south] at (113.5,2.03) {577};
+\node[font=\fontsize{6.6}{7.8}\selectfont\bfseries,anchor=north] at (113.5,-0.6) {10};
+\node[font=\fontsize{6.2}{7.2}\selectfont,text=greyD,anchor=north east,rotate=40] at (114.5,-4.6) {previous t};
+\draw[greyD,line width=0.4pt] (0,34) -- (0,35) -- (95,35) -- (95,34);
+\node[font=\fontsize{6.6}{7.8}\selectfont,anchor=south] at (47.5,35.2) {connection A};
+\draw[greyD,line width=0.4pt] (99,34) -- (99,35) -- (117,35) -- (117,34);
+\node[font=\fontsize{6.6}{7.8}\selectfont,anchor=south] at (108.0,35.2) {connection B};
+\fill[navy] (126,26) rectangle (129,29); \node[font=\fontsize{6.4}{7.6}\selectfont,anchor=west] at (129.5,27.5) {delta};
+\fill[navyL] (126,21) rectangle (129,24); \node[font=\fontsize{6.4}{7.6}\selectfont,anchor=west] at (129.5,22.5) {full};
+\end{tikzpicture}}{Bytes per reply. Step 3 sends a \code{t} the server really sent 6 s earlier, so only the last \code{t} counts; step 4 sends a value the server never sent, which rules out a time-based rule (b); steps 5 to 7 show there is no tolerance window; step 8$'$ repeats the value just used, after the reference had moved; step 9 shows the state is per connection, ruling out (c). A reply counts as full when it contains \code{pos} and as a delta when it contains \code{pos_diff}.}{DART Quant Team}
+
+The server appears to keep, for each connection, the last snapshot it sent and its \code{t}. When a request's \code{lastT} equals that \code{t}, it sends the current state minus that snapshot; otherwise it sends everything. Either way, the current state becomes the new reference.
+
+This rule keeps the wrapper's state in step with the server. If a reply is lost, the next request carries an old \code{t}, the server sees no match and sends a full snapshot, so the protocol never lets a client apply one delta after skipping another. A reconnect also gets a full snapshot without special handling. What remains is the risk of a bug in the client's own code for applying deltas. Sending a second request before the first reply arrives does no harm to correctness, but the second \code{lastT} is already stale, so every reply comes back 17 times larger.
+
+\lead{\code{t} runs exactly nine hours (32,400 seconds) ahead of Unix time.} A reply received at 05:48:27 KST carried \code{t} = 1795499307. Read as UTC that is 05:48:27 on 24 Nov, matching the reply's \code{kstNow} ("2026-11-24 05:48:27"), but the Unix time of 05:48:27 KST is 1795466907. The server evidently converts Korean wall-clock time to epoch seconds as if it were UTC. Other timestamps are correct: the JWT \code{exp} is true Unix time and order records carry UTC strings ending in \code{Z}. Comparing \code{t} with the PC clock (\code{time.time()}) is therefore off by nine hours; when we sent a \code{lastT} taken from the client clock, the server treated it as nine hours old and returned a full snapshot.
+
+\lead{An open WebSocket keeps working after its token expires, but a new connection needs a valid token.} We opened a connection with a token expiring at 07:21:41 and kept polling every 3 seconds (\figref{13}). Replies kept arriving for 8 minutes past expiry, 382 in all, beyond the roughly five minutes after which REST requests are refused (Section 2.2). A negotiation sent afterwards with the same token got a 401. The server therefore checks the token when a connection is made, not on each message, which matches ASP.NET SignalR's default (its option to close connections when authentication expires is off unless set). The wrapper can renew the REST token on its own schedule without touching the live connection, but it must renew before reconnecting.
+
+\figblock{13}{The open WebSocket kept answering through the token's expiry and past the REST tolerance; a new negotiation with the same token was refused}[Cumulative replies on one connection polled every 3 s, token expiring at 07:21:41 KST on 24 Nov 2026]{%
+\begin{tikzpicture}[xscale=0.96,x=1mm,y=1mm,lab/.style={font=\fontsize{6.6}{7.8}\selectfont}]
+\fill[navyXL] (70.10,0) rectangle (126.00,32);
+\draw[greyM,line width=0.4pt] (0,0) -- (126.00,0); \draw[greyM,line width=0.4pt] (0,0) -- (0,32);
+\draw[greyM] (0.00,0) -- (0.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (0.00,-1) {07:10};\draw[greyM] (12.00,0) -- (12.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (12.00,-1) {07:12};\draw[greyM] (24.00,0) -- (24.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (24.00,-1) {07:14};\draw[greyM] (36.00,0) -- (36.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (36.00,-1) {07:16};\draw[greyM] (48.00,0) -- (48.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (48.00,-1) {07:18};\draw[greyM] (60.00,0) -- (60.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (60.00,-1) {07:20};\draw[greyM] (72.00,0) -- (72.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (72.00,-1) {07:22};\draw[greyM] (84.00,0) -- (84.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (84.00,-1) {07:24};\draw[greyM] (96.00,0) -- (96.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (96.00,-1) {07:26};\draw[greyM] (108.00,0) -- (108.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (108.00,-1) {07:28};\draw[greyM] (120.00,0) -- (120.00,-1); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=north] at (120.00,-1) {07:30};
+\draw[greyM] (0,0.00) -- (-1,0.00); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=east] at (-1,0.00) {0};\draw[greyM] (0,7.50) -- (-1,7.50); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=east] at (-1,7.50) {100};\draw[greyM] (0,15.00) -- (-1,15.00); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=east] at (-1,15.00) {200};\draw[greyM] (0,22.50) -- (-1,22.50); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=east] at (-1,22.50) {300};\draw[greyM] (0,30.00) -- (-1,30.00); \node[font=\fontsize{6}{7}\selectfont,text=greyD,anchor=east] at (-1,30.00) {400};
+\node[lab,rotate=90,text=greyD] at (-9,15) {replies};
+\draw[navy,line width=0.9pt] (1.60,0.07) -- (7.90,1.65) -- (14.00,3.15) -- (20.10,4.65) -- (26.10,6.15) -- (32.20,7.65) -- (38.30,9.15) -- (44.30,10.65) -- (50.40,12.15) -- (56.40,13.65) -- (62.50,15.15) -- (68.60,16.65) -- (74.60,18.15) -- (80.70,19.65) -- (86.70,21.15) -- (92.80,22.65) -- (98.90,24.15) -- (105.00,25.65) -- (111.00,27.15) -- (117.10,28.65);
+\fill[navy] (1.60,0.07) circle (0.55);\fill[navy] (7.90,1.65) circle (0.55);\fill[navy] (14.00,3.15) circle (0.55);\fill[navy] (20.10,4.65) circle (0.55);\fill[navy] (26.10,6.15) circle (0.55);\fill[navy] (32.20,7.65) circle (0.55);\fill[navy] (38.30,9.15) circle (0.55);\fill[navy] (44.30,10.65) circle (0.55);\fill[navy] (50.40,12.15) circle (0.55);\fill[navy] (56.40,13.65) circle (0.55);\fill[navy] (62.50,15.15) circle (0.55);\fill[navy] (68.60,16.65) circle (0.55);\fill[navy] (74.60,18.15) circle (0.55);\fill[navy] (80.70,19.65) circle (0.55);\fill[navy] (86.70,21.15) circle (0.55);\fill[navy] (92.80,22.65) circle (0.55);\fill[navy] (98.90,24.15) circle (0.55);\fill[navy] (105.00,25.65) circle (0.55);\fill[navy] (111.00,27.15) circle (0.55);\fill[navy] (117.10,28.65) circle (0.55);
+\draw[navy,line width=0.6pt,dashed] (70.10,0) -- (70.10,32); \node[lab,anchor=south east] at (69.60,28.5) {token expires 07:21:41};
+\draw[greyD,line width=0.6pt,dashed] (100.10,0) -- (100.10,32); \node[lab,anchor=south east,text=greyD,text width=26mm,align=right] at (99.60,1.5) {REST requests refused from about here};
+\draw[navy,line width=0.8pt] (119.00,7) -- (121.00,9) (119.00,9) -- (121.00,7);
+\node[lab,anchor=south east,text width=32mm,align=right] at (121.00,9.6) {new negotiation with\\the same token: 401};
+\node[lab,anchor=north west] at (118.30,28.05) {382};
+\end{tikzpicture}}{Points are the one-per-minute log lines of the test script. The REST cut-off is the token's expiry plus the five-minute tolerance measured in Section 2.2 with another token. The shaded area is the time after expiry.}{DART Quant Team}
+
+\figblock{14}{The receive loop keeps one request in flight and either replaces or updates its state, depending on the reply}[Pseudocode for the real-time loop]{%
+\begin{minipage}{0.94\linewidth}\fontsize{8.3}{10.8}\selectfont\ttfamily
+poll(hub):\\
+\hspace*{4mm}lastT $\leftarrow$ 0\\
+\hspace*{4mm}loop:\\
+\hspace*{8mm}send(RequestPortfolio(lastT, d = currBizDay, pfId))\\
+\hspace*{8mm}p $\leftarrow$ await receive()\hfill{\rmfamily\color{greyD}no new request until the reply arrives}\\
+\hspace*{8mm}if p.pos $\neq$ null: state $\leftarrow$ full(p)\hfill{\rmfamily\color{greyD}snapshot: replace}\\
+\hspace*{8mm}else: state $\leftarrow$ apply(state, p.*\_diff)\hfill{\rmfamily\color{greyD}delta: apply}\\
+\hspace*{8mm}lastT $\leftarrow$ p.t\hfill{\rmfamily\color{greyD}echoed, not interpreted}\\
+\hspace*{8mm}await sleep(3)\\
+on reconnect: refresh token if expired; negotiate; lastT $\leftarrow$ 0
+\end{minipage}}{Whether \code{updated} carries only the changed fields or whole records, which decides how \code{apply} works, will be settled during market hours.}{DART Quant Team}
+\verdict{The receive loop keeps one request in flight. A reply with snapshot fields replaces the state and a reply with delta fields updates it. \code{t} is treated as an opaque value to echo; when a time is needed, the wrapper reads \code{kstNow}. Every server timestamp is converted to a timezone-aware KST time on arrival. The WebSocket authenticates with a header, so the token stays out of URLs and access logs. Token renewal does not reconnect the WebSocket; a reconnection always renews the token first if it has expired.}
+
+% =====================================================================================================
+% OPEN QUESTIONS
+% =====================================================================================================
+\seclabel
+\claim{Tests during market hours will settle the order layer and the data model}
+Four questions are still open. On orders, we do not yet know whether the weight \code{wei} is a target or an increment, what the entry and exit codes in \code{ex} mean, how suspending an order differs from deleting it, or which states an order passes through; whether an order placed before 09:00 is accepted and starts at the open is being tested on 24 Nov with one small order. For deltas, we need to see whether \code{updated} carries only the changed fields or whole records. The \code{Orders} endpoint's parameters will be captured from the web page. Last, whether the order cap of 100 a day counts amendments and cancellations is still to be confirmed with the organiser; rate limits will not be probed, since the organiser has said that bursts of traffic can get an IP address blocked.
+
+\end{document}
