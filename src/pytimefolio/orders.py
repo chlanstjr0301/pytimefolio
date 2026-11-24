@@ -14,19 +14,27 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import fcntl
 import json
+import os
 import logging
 import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .errors import AmbiguousState, RequestError, ServerError, TimefolioError
+from .errors import AmbiguousState, BlockedError, RequestError, ServerError, TimefolioError
 from .hub import Hub
 from .rest import Rest, KST
 
 log = logging.getLogger("pytimefolio.orders")
 STATE_DIR = Path.home() / ".config" / "pytimefolio"
+WEI_STEP = 0.01          # 주문 크기 단위(%). 서버가 비중을 소수 둘째 자리로 다룬다 (보유 비중 표시 기준)
+
+
+def quantize(wei: float) -> float:
+    """주문 크기를 WEI_STEP 단위로 맞춘다. 보내는 값과 피드에서 찾는 값이 같아지도록 한 번만 한다."""
+    return round(round(wei / WEI_STEP) * WEI_STEP, 2)
 
 
 # ---------------------------------------------------------------- 가격 도구
@@ -56,11 +64,16 @@ class Order:
     hm1: str | None = None             # None 이면 즉시 실행, 있으면 시간 분할
     exit_all: bool = False
 
+    def __post_init__(self):
+        self.wei = quantize(self.wei)
+        if self.wei <= 0:
+            raise ValueError(f"{self.prod_id}: 주문 크기가 {WEI_STEP}% 보다 작음")
+
     def body(self, d: str, pf_id: int, now_hm: str) -> dict:
         if sum(x is not None for x in (self.limit_prc, self.limit_idx, self.stop_prc)) != 1:
             raise ValueError("limit_prc, limit_idx, stop_prc 중 정확히 하나를 지정해야 함")
         return {"d": d, "pfId": pf_id, "prodId": self.prod_id, "ls": "L", "ex": "X" if self.exit else "E",
-                "wei": round(self.wei, 4), "exitAll": self.exit_all, "limitPrc": self.limit_prc,
+                "wei": self.wei, "exitAll": self.exit_all, "limitPrc": self.limit_prc,
                 "limitIdx": self.limit_idx, "stopPrc": self.stop_prc,
                 "hm0": self.hm0 or now_hm, "hm1": self.hm1}
 
@@ -73,6 +86,31 @@ class Result:
     qty2ord: int
     avg_px: float | None
     record: dict = field(repr=False, default_factory=dict)
+
+
+def default_stock_cap(prod_id: str) -> float:
+    """보유하지 않은 종목의 종목 한도 (대회 가이드라인: 삼성전자 40%, 그 밖 15%)."""
+    return 40.0 if prod_id == "A005930" else 15.0
+
+
+def _same_order(rec: dict, o: "Order") -> bool:
+    return (rec.get("prodId") == o.prod_id and rec.get("ex") == ("X" if o.exit else "E")
+            and abs(float(rec.get("wei") or 0) - o.wei) < WEI_STEP / 2)
+
+
+def _parse_utc(s) -> dt.datetime | None:
+    try:
+        return dt.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def remaining_wei(rec: dict) -> float:
+    """체결 중인 주문의 남은 크기(%). 매수 +, 매도 -."""
+    wei = float(rec.get("wei") or 0)
+    q, cum = int(rec.get("qty2ord") or 0), int(rec.get("cumQty") or 0)
+    left = wei * (1 - cum / q) if q else wei
+    return -left if rec.get("ex") == "X" else left
 
 
 # ---------------------------------------------------------------- 목표 비중 -> 주문
@@ -112,13 +150,15 @@ def sector_violations(targets: dict[str, float], sec_of: dict[str, str], mkt: di
 
 
 def target_to_orders(targets: dict[str, float], current: dict[str, float], min_wei: float = 0.05,
-                     **price) -> list[Order]:
+                     pending: dict[str, float] | None = None, **price) -> list[Order]:
     """목표 비중(%)과 현재 비중(%)의 차이를 주문으로 바꾼다. 차이가 min_wei 보다 작으면 건너뛴다.
+    pending: 아직 체결 중인 주문의 남은 크기(%, 매수 +, 매도 -). 이미 나가 있는 몫은 다시 주문하지 않는다.
     price 는 Order 의 가격·시간 인자 (예: limit_idx=5, hm0="09:00", hm1="09:30")."""
+    pending = pending or {}
     out = []
-    for prod in sorted(set(targets) | set(current)):
-        delta = targets.get(prod, 0.0) - current.get(prod, 0.0)
-        if abs(delta) >= min_wei:
+    for prod in sorted(set(targets) | set(current) | set(pending)):
+        delta = targets.get(prod, 0.0) - current.get(prod, 0.0) - pending.get(prod, 0.0)
+        if abs(delta) >= max(min_wei, WEI_STEP):
             out.append(Order(prod, abs(delta), exit=delta < 0, **price))
     # 매도를 먼저 내야 현금이 생긴다
     return sorted(out, key=lambda o: not o.exit)
@@ -130,65 +170,100 @@ class Orders:
         self.r, self.hub = rest, hub
         self.daily_cap, self.min_interval = daily_cap, min_interval
         self._write_lock = asyncio.Lock()
+        self._place_lock = asyncio.Lock()        # 넣기와 찾기를 한 묶음으로: 같은 주문 두 건이 같은 ID 를 잡지 않게
         self._last_write = 0.0
+        self.halted: str | None = None           # 403/429 를 받으면 이유가 들어가고 이후 쓰기를 모두 거부
 
     # ---- 하루 건수 (재시작해도 이어진다)
     def _count_file(self) -> Path:
         return STATE_DIR / f"orders_{self.r.biz_day}.json"
 
-    def used_today(self) -> int:
-        f = self._count_file()
-        return json.loads(f.read_text())["n"] if f.exists() else 0
-
-    def sync_count(self, server_count: int) -> int:
-        """서버의 오늘 주문 기록으로 로컬 건수를 맞춘다. 둘 중 큰 값을 쓴다."""
-        n = max(self.used_today(), server_count)
+    def _update_count(self, fn) -> int:
+        """건수 파일을 잠그고 읽고 바꾸고 원자적으로 쓴다. 여러 프로세스가 동시에 써도 깨지지 않는다."""
         f = self._count_file()
         f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({"n": n}))
+        with open(f.with_suffix(".lock"), "w") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            n = json.loads(f.read_text())["n"] if f.exists() else 0
+            n = fn(n)
+            tmp = f.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"n": n}))
+            os.replace(tmp, f)
         return n
 
-    def _bump(self) -> None:
+    def used_today(self) -> int:
         f = self._count_file()
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({"n": self.used_today() + 1}))
+        try:
+            return json.loads(f.read_text())["n"] if f.exists() else 0
+        except ValueError:
+            return self.daily_cap                 # 읽을 수 없으면 한도를 다 쓴 것으로 본다
+
+    def sync_count(self, server_count: int) -> int:
+        """서버의 오늘 주문 기록(신규 1건 + 정지된 주문마다 1건)으로 로컬 건수를 맞춘다. 큰 값을 쓴다."""
+        return self._update_count(lambda n: max(n, server_count))
+
+    def _bump(self, k: int = 1) -> None:
+        self._update_count(lambda n: n + k)
 
     # ---- 쓰기 요청 하나 (간격 1 s, 건수 기록)
-    async def _write(self, path: str, body: dict):
+    async def _write(self, path: str, body: dict, count: int = 1):
+        """count: 이 요청이 하루 건수에 더하는 수 (신규 1, 정지는 정지한 주문 수)."""
         async with self._write_lock:
-            if self.used_today() >= self.daily_cap:
-                raise TimefolioError(f"하루 주문 한도 {self.daily_cap}건 도달")
+            if self.halted:
+                raise BlockedError(f"쓰기 중단 상태: {self.halted}")
+            if self.used_today() + count > self.daily_cap:
+                raise TimefolioError(f"하루 주문 한도 {self.daily_cap}건 초과 (사용 {self.used_today()}, 요청 {count})")
             wait = self._last_write + self.min_interval - time.monotonic()
             if wait > 0:
                 await asyncio.sleep(wait)
+            sent = True
             try:
                 return await self.r.a.call("POST", f"/api/Portfolio/{path}", json=body)
+            except BlockedError as e:
+                self.halted = str(e)
+                log.error("차단 신호 -> 이후 모든 쓰기 중단: %s", e)
+                raise
+            except ServerError as e:
+                sent = e.sent
+                raise
             finally:
                 self._last_write = time.monotonic()
-                self._bump()                          # 응답을 못 받았어도 서버에 갔을 수 있으므로 센다
+                if sent:
+                    self._bump(count)                 # 응답을 못 받았어도 서버에 갔을 수 있으므로 센다
 
     def _now_hm(self) -> str:
         return dt.datetime.fromtimestamp(self.r.a.t.server_time(), KST).strftime("%H:%M")
 
     # ---- 사전 점검
     async def check(self, o: Order) -> None:
+        self.hub.assert_fresh()                       # 오래된 상태로 주문하지 않는다
         if not self.r.biz_day_is_today():
             raise AmbiguousState(f"서버 영업일 {self.r.biz_day} != 오늘 {self.r.kst_today()}: 주문하지 않음")
         warns = await self.r.validate_product(o.prod_id, entry=not o.exit)
         if warns:
             raise RequestError(f"{o.prod_id} ValidateProduct 경고: {warns}")
-        pos = self.hub.state.by_prod().get(o.prod_id)
-        if pos and not o.exit and pos.get("weiLimit") is not None:
-            if float(pos.get("wei") or 0) + o.wei > float(pos["weiLimit"]):
-                raise RequestError(f"{o.prod_id} 종목 한도 {pos['weiLimit']}% 초과")
+        pos = self.hub.state.by_prod().get(o.prod_id) or {}
+        if not o.exit:
+            lim = float(pos.get("weiLimit") or default_stock_cap(o.prod_id))
+            if float(pos.get("wei") or 0) + o.wei > lim:
+                raise RequestError(f"{o.prod_id} 종목 한도 {lim}% 초과")
 
     # ---- 피드에서 새 주문 찾기
     def _match(self, o: Order, before: set) -> dict | None:
         for oid, rec in self.hub.state.ords.items():
             if oid in before:
                 continue
-            if rec.get("prodId") == o.prod_id and rec.get("ex") == ("X" if o.exit else "E") \
-                    and abs(float(rec.get("wei") or 0) - o.wei) < 1e-6:
+            if _same_order(rec, o):
+                return rec
+        return None
+
+    async def _find_rest(self, o: Order, before: set, since_utc: dt.datetime) -> dict | None:
+        """REST Orders(서버 기록)에서 찾는다. 피드가 끊겼을 때도 쓸 수 있는 확인 수단."""
+        for rec in await self.r.orders():
+            if rec.get("Id") in before or not _same_order(rec, o):
+                continue
+            g = _parse_utc(rec.get("genT"))
+            if g is None or g >= since_utc - dt.timedelta(seconds=5):
                 return rec
         return None
 
@@ -203,36 +278,43 @@ class Orders:
 
     # ---- 주문
     async def place(self, o: Order) -> int:
-        """주문을 넣고 피드에서 찾은 주문 ID 를 돌려준다."""
-        await self.check(o)
-        body = o.body(self.r.biz_day, self.r._pf(), self._now_hm())
-        before = set(self.hub.state.ords)
-        try:
-            await self._write("AddOrder", body)
-        except ServerError as e:                       # 도착 여부 모름 -> 바로 다시 보내지 않는다
-            log.warning("AddOrder 응답 없음 (%s) -> 30 s 뒤 피드 확인", e)
-            rec = await self._find(o, before, 30)
-            if rec:
-                return rec["Id"]
-            log.warning("피드에 없음 -> 한 번만 다시 보냄")
-            await self._write("AddOrder", body)
-        rec = await self._find(o, before, 15)
-        if not rec:
-            raise AmbiguousState(f"AddOrder 200 이었지만 15 s 안에 피드에서 {o.prod_id} 주문을 못 찾음")
-        log.info("주문 접수 Id=%s %s %.2f%% state=%s qty2ord=%s",
-                 rec["Id"], o.prod_id, o.wei, rec.get("state"), rec.get("qty2ord"))
-        return rec["Id"]
+        """주문을 넣고 주문 ID 를 돌려준다. ID 는 피드에서 찾고, 못 찾으면 REST Orders 로 확인한다.
+        응답을 못 받은 주문은 자동으로 다시 보내지 않는다 (서버에 들어갔는지 확인할 수 없으면 멈춘다)."""
+        async with self._place_lock:
+            await self.check(o)
+            body = o.body(self.r.biz_day, self.r._pf(), self._now_hm())
+            before = set(self.hub.state.ords)
+            since = dt.datetime.fromtimestamp(self.r.a.t.server_time(), dt.timezone.utc)
+            try:
+                await self._write("AddOrder", body)
+            except ServerError as e:
+                if not e.sent:                         # 서버에 닿지 않은 것이 확실할 때만 한 번 다시
+                    log.warning("AddOrder 연결 실패 (%s) -> 한 번 다시 보냄", e)
+                    await asyncio.sleep(2)
+                    await self._write("AddOrder", body)
+                else:
+                    log.warning("AddOrder 응답 없음 (%s) -> 피드와 Orders 에서 확인, 다시 보내지 않음", e)
+            rec = await self._find(o, before, 15)
+            if not rec:
+                rec = await self._find_rest(o, before, since)
+            if not rec:
+                raise AmbiguousState(f"{o.prod_id} {o.wei}% 주문이 서버에 있는지 확인하지 못함. "
+                                     "다시 보내지 않았으니 화면이나 Orders 로 확인할 것")
+            log.info("주문 접수 Id=%s %s %.2f%% state=%s qty2ord=%s",
+                     rec["Id"], o.prod_id, o.wei, rec.get("state"), rec.get("qty2ord"))
+            return rec["Id"]
 
     async def stop(self, ids: list[int]) -> None:
         """주문 정지 (화면의 '정지'). 이미 끝난 주문은 빼고 보낸다."""
         live = [i for i in ids if self.hub.state.ords.get(i, {}).get("state") != "Done"]
         if live:
             await self._write("CancelOrderBatch", {"d": self.r.biz_day, "pfId": self.r._pf(),
-                                                  "ords": ",".join(map(str, live))})
+                                                  "ords": ",".join(map(str, live))}, count=len(live))
 
     async def wait_done(self, oid: int, timeout: float | None = None) -> Result:
         end = None if timeout is None else time.monotonic() + timeout
         while True:
+            self.hub.assert_fresh()                   # 피드가 죽었으면 끝없이 기다리지 않는다
             rec = self.hub.state.ords.get(oid, {})
             if rec.get("state") == "Done":
                 cum, q = int(rec.get("cumQty") or 0), int(rec.get("qty2ord") or 0)

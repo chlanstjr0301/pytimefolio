@@ -51,15 +51,22 @@ class Auth:
         rows = [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path, "expires": c.expires}
                 for c in self.t.cookies.jar]
         self.session_file.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.session_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        tmp = self.session_file.with_suffix(".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             json.dump(rows, f)
-        os.chmod(self.session_file, 0o600)       # 이미 있던 파일이면 권한을 다시 맞춘다
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.session_file)       # 쓰는 도중 꺼져도 파일이 깨지지 않는다
 
     def _load_cookies(self) -> bool:
         if not self.session_file.exists():
             return False
-        for c in json.loads(self.session_file.read_text()):
+        try:
+            rows = json.loads(self.session_file.read_text())
+        except (OSError, ValueError):
+            log.warning("세션 파일을 읽을 수 없음 -> 로그인")
+            return False
+        for c in rows:
             self.t.cookies.set(c["name"], c["value"], domain=c["domain"], path=c["path"])
             if c["name"] == "refreshToken":
                 self._refresh_expires = c["expires"]
@@ -91,6 +98,7 @@ class Auth:
     async def refresh(self) -> None:
         r = await self.t.request("POST", "/api/Auth/SilentRefresh")   # 쿠키는 클라이언트가 붙여 보낸다
         self._accept(r.json())
+        self._save_cookies()                     # 서버가 쿠키를 바꿔 주면 그것도 남긴다
         log.info("토큰 갱신 (서버 영업일 %s)", self.biz_day)
 
     async def start(self) -> None:

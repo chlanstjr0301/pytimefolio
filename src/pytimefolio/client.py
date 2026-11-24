@@ -13,9 +13,10 @@ import statistics
 from pathlib import Path
 
 from .auth import Auth, DEFAULT_SESSION
-from .errors import TimefolioError
+from .errors import RebalanceError, TimefolioError
 from .hub import Hub
-from .orders import Order, Orders, Result, cap_weights, sector_violations, target_to_orders
+from .orders import (Order, Orders, Result, cap_weights, default_stock_cap, remaining_wei,
+                     sector_violations, target_to_orders)
 from .rest import Rest
 from .state import PortfolioState
 from .transport import Transport
@@ -40,6 +41,13 @@ class Timefolio:
 
     # ---------------------------------------------------------------- 수명
     async def __aenter__(self) -> "Timefolio":
+        try:
+            return await self._start()
+        except BaseException:
+            await self.__aexit__(None, None, None)   # 시작하다 실패해도 피드 태스크와 연결을 닫는다
+            raise
+
+    async def _start(self) -> "Timefolio":
         await self.auth.start()
         pf = self.rest.select_portfolio(self.ctst_id)
         self.hub = Hub(self.auth, pf, interval=self._interval)
@@ -73,8 +81,11 @@ class Timefolio:
         return self.orders.sync_count(server)
 
     def _alive(self) -> None:
+        """피드 태스크가 끝났거나 마지막 응답이 오래됐으면 예외. 상태를 읽고 주문하기 전에 부른다."""
         if self._feed_task and self._feed_task.done():
-            raise TimefolioError(f"피드가 멈춤: {self._feed_task.exception()!r}")
+            exc = None if self._feed_task.cancelled() else self._feed_task.exception()
+            raise TimefolioError(f"피드가 멈춤: {exc!r}")
+        self.hub.assert_fresh()
 
     # ---------------------------------------------------------------- 상태
     @property
@@ -145,8 +156,9 @@ class Timefolio:
         total = sum(max(0.0, v) for v in targets.values())
         if total > max_total + 1e-9:
             raise ValueError(f"목표 비중 합계 {total:.2f}% > {max_total}%")
-        caps = {p: float(r["weiLimit"]) for p, r in self.positions().items() if r.get("weiLimit") is not None}
-        capped = cap_weights(targets, {k: v for k, v in caps.items() if k in targets})
+        held = self.positions()
+        caps = {p: float(held.get(p, {}).get("weiLimit") or default_stock_cap(p)) for p in targets}
+        capped = cap_weights(targets, caps)
         # 섹터 한도: max(시장 섹터 비중 x 2, 10%). 넘으면 주문을 만들지 않는다
         unknown = [p for p, w in capped.items() if w > 0 and p not in self.sec_of]
         if unknown:
@@ -155,7 +167,10 @@ class Timefolio:
         bad = sector_violations(capped, self.sec_of, mkt)
         if bad:
             raise ValueError("섹터 한도 초과 (합계, 한도): " + ", ".join(f"{k} {w}% > {lim}%" for k, (w, lim) in bad.items()))
-        orders = target_to_orders(capped, self.weights(), min_wei=min_wei, **price)
+        pending: dict[str, float] = {}               # 체결 중인 주문의 남은 몫은 다시 주문하지 않는다
+        for rec in self.open_orders():
+            pending[rec["prodId"]] = pending.get(rec["prodId"], 0.0) + remaining_wei(rec)
+        orders = target_to_orders(capped, self.weights(), min_wei=min_wei, pending=pending, **price)
         # 서버는 주식 수를 내림하므로 1주 비중보다 작은 주문은 0주가 된다 -> 미리 뺀다
         kept, self.dropped = [], []
         for o in orders:
@@ -201,10 +216,14 @@ class Timefolio:
 
     async def rebalance(self, targets: dict[str, float], min_wei: float = 0.05, **price) -> list[int]:
         """plan() 의 주문을 1 s 간격으로 보내고 주문 ID 목록을 돌려준다. 한도가 모자라면 시작하지 않는다."""
+        await self._sync_count()                     # 브라우저에서 넣은 주문까지 다시 센다
         orders = self.plan(targets, min_wei, **price)
         if len(orders) > self.orders_left():
             raise TimefolioError(f"주문 {len(orders)}건 > 남은 한도 {self.orders_left()}건")
-        ids = []
+        ids: list[int] = []
         for o in orders:
-            ids.append(await self.orders.place(o))
+            try:
+                ids.append(await self.orders.place(o))
+            except Exception as e:
+                raise RebalanceError(f"{o.prod_id} 주문 실패: {e}", ids) from e
         return ids

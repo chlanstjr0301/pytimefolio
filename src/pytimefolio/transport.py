@@ -14,7 +14,7 @@ from email.utils import parsedate_to_datetime
 
 import httpx
 
-from .errors import AuthError, RequestError, ServerError
+from .errors import AuthError, BlockedError, RequestError, ServerError
 
 BASE_URL = "https://contest.timefolio.net"
 
@@ -22,10 +22,13 @@ BASE_URL = "https://contest.timefolio.net"
 class Transport:
     """async with Transport() as t: ... 로 쓴다."""
 
-    def __init__(self, base_url: str = BASE_URL, timeout: float = 15.0, keepalive_expiry: float = 10.0):
+    def __init__(self, base_url: str = BASE_URL, timeout: float = 15.0, keepalive_expiry: float = 10.0,
+                 transport: httpx.AsyncBaseTransport | None = None):
+        """transport: 테스트용 (httpx.MockTransport). 평소에는 None."""
         self._client = httpx.AsyncClient(
             base_url=base_url,
-            http2=True,
+            transport=transport,
+            http2=transport is None,
             timeout=timeout,
             limits=httpx.Limits(keepalive_expiry=keepalive_expiry),
             event_hooks={"response": [self._on_response]},
@@ -86,14 +89,21 @@ class Transport:
             try:
                 resp = await self._client.request(method, path, **kw)
                 break
-            except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError) as e:
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as e:
+                # 연결 자체가 안 됨: 요청이 서버에 가지 않았다
+                if i == attempts - 1:
+                    raise ServerError(f"{method} {path}: {type(e).__name__}", sent=False) from e
+            except (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError) as e:
+                # 보내는 중이나 받는 중에 끊김: 서버가 받았을 수 있다
                 if i == attempts - 1:
                     raise ServerError(f"{method} {path}: {type(e).__name__}") from e
             except httpx.TimeoutException as e:
-                raise ServerError(f"{method} {path}: timeout") from e
+                raise ServerError(f"{method} {path}: {type(e).__name__}") from e
 
         if resp.status_code == 401:
             raise AuthError(resp.headers.get("www-authenticate", "401"))
+        if resp.status_code in (403, 429):
+            raise BlockedError(f"{resp.status_code} {method} {path}: 차단 또는 요청 제한")
         if resp.status_code == 400:
             raise RequestError(resp.text[:300])
         if resp.status_code >= 500:

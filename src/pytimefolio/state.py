@@ -54,6 +54,8 @@ class PortfolioState:
             return "full"
         if p.get("bs") is not None:
             self.bs = p["bs"]
+        elif isinstance(p.get("bs_updated"), dict):     # 증분에서 잔고 변화가 오는 필드 (내용 확인 필요)
+            self.bs = {**(self.bs or {}), **p["bs_updated"]}
         for name, store in (("pos_diff", self.pos), ("ords_diff", self.ords), ("msecs_diff", self.msecs)):
             self._apply_diff(store, p.get(name))
         for k, v in p.items():                 # 증분에 실려 온 그 밖의 필드는 null 이 아니면 덮어쓴다

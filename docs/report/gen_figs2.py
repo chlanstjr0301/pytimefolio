@@ -72,15 +72,19 @@ rows=[("1","0","A","F","F","F","F"),("2","t of the previous reply","A","D","D","
 ("7","previous t plus 100","A","F","?","F","F"),("8","t of the previous reply","A","D","D","D","D"),
 ("8$'$","the same value again","A","F","D","F","F"),("9","last t from connection A","B","F","D","D","F"),("10","t of the previous reply","B","D","D","D","D")]
 def cell(pred,obs):
-    if pred=="?": return r"\cellcolor{white}\textcolor{greyD}{?}"
+    """예측 칸: 맞으면 흰 바탕 회색 글자, 틀리면 연한 남색 바탕 + 굵은 글자 + x. 관측 칸은 따로 obs_cell."""
+    if pred=="?": return r"\textcolor{greyD}{?}"
     txt="delta" if pred=="D" else "full"
-    mark="" if pred==obs else r"\ $\times$"
-    return (r"\cellcolor{navy}\textcolor{white}{"+txt+mark+"}") if pred=="D" else (r"\cellcolor{navyL}"+txt+mark)
+    if pred==obs:
+        return r"\textcolor{greyD}{"+txt+"}"
+    return r"\cellcolor{navyL}\textbf{"+txt+r"\,$\times$}"
+def obs_cell(obs):
+    return (r"\cellcolor{navyXL}\textbf{delta}") if obs=="D" else r"\textbf{full}"
 lines=[]
 for st,lt,cn,a,b,c,o in rows:
     lt=lt.replace(" t ",r" \code{t} ").replace("t of",r"\code{t} of").replace("last t",r"last \code{t}") if True else lt
     sep=r"\specialrule{0.8pt}{1pt}{1pt}" if st=="9" else r"\rowsep"
-    lines.append(f"{sep}\n{st} & {lt} & {cn} & {cell(a,o)} & {cell(b,o)} & {cell(c,o)} & {cell(o,o).replace('navyL','navyL').replace('}','}',1)}\\\\")
+    lines.append(f"{sep}\n{st} & {lt} & {cn} & {cell(a,o)} & {cell(b,o)} & {cell(c,o)} & {obs_cell(o)}\\\\")
 tab=(r"{\tabfont\begin{tabularx}{\linewidth}{R{6mm} >{\RaggedRight\arraybackslash}X >{\centering\arraybackslash}p{9mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm}}"+"\n"
      +r"\thd{Step} & \thd{\code{lastT} sent} & \thd{Conn.} & \thd{(a) last t, this connection} & \thd{(b) any recent time} & \thd{(c) last t, this account} & \thd{Observed}\\"+"\n"
      +"\n".join(lines).replace(r"\rowsep",r"\rowsep",1)+"\n"+r"\end{tabularx}}")

@@ -12,11 +12,13 @@ import asyncio
 import json
 import logging
 import random
+import time
 from typing import AsyncIterator
 
 import websockets
 
 from .auth import Auth
+from .errors import StaleFeed
 from .state import PortfolioState
 
 log = logging.getLogger("pytimefolio.hub")
@@ -30,12 +32,14 @@ class Hub:
         self.ws = None
         self.state = PortfolioState()
         self._last_t = 0
+        self.last_reply = 0.0                    # 마지막 응답을 받은 monotonic 시각
+        self.failures = 0
 
     # ---------------------------------------------------------------- 연결
     async def connect(self) -> None:
-        tok = await self.a.token()                                   # 만료됐으면 여기서 갱신된다
         r = await self.a.call("POST", "/hubs/main/negotiate", params={"negotiateVersion": 1})
         ctoken = r.json()["connectionToken"]
+        tok = await self.a.token()               # negotiate 가 401 로 갱신을 일으켰을 수 있으므로 그 뒤에 읽는다
         self.ws = await websockets.connect(f"{WS_URL}?id={ctoken}",
                                            additional_headers={"Authorization": f"Bearer {tok}"},
                                            max_size=2 ** 22, ping_interval=None)   # SignalR 자체 ping(type 6)을 쓴다
@@ -69,24 +73,42 @@ class Hub:
                 elif typ == 1 and m.get("target") == "ReceivePortfolio":
                     p = (m.get("arguments") or [None])[0]
                     kind = self.state.apply(p if isinstance(p, dict) else None)
+                    self.last_reply = time.monotonic()
                     self._last_t = self.state.t if kind != "null" else 0   # null 이면 다음은 스냅샷
                     return kind
+
+    # ---------------------------------------------------------------- 신선도
+    def age(self) -> float:
+        """마지막 응답 뒤 지난 초. 한 번도 못 받았으면 무한대."""
+        return time.monotonic() - self.last_reply if self.last_reply else float("inf")
+
+    def assert_fresh(self, max_age: float | None = None) -> None:
+        """마지막 응답이 max_age(기본: 폴링 2번 + 응답 대기 시간)보다 오래됐으면 StaleFeed."""
+        limit = max_age if max_age is not None else 2 * self.interval + self.reply_timeout
+        if self.age() > limit:
+            raise StaleFeed(f"피드 마지막 응답 {self.age():.0f} s 전 (한도 {limit:.0f} s, 연속 실패 {self.failures}회)")
 
     # ---------------------------------------------------------------- 루프
     async def stream(self) -> AsyncIterator[tuple[str, PortfolioState]]:
         """(종류, 상태)를 3 s 마다 내보낸다. 끊기면 지수 백오프 + 지터로 다시 붙는다."""
-        failures = 0
         while True:
             try:
                 if self.ws is None:
                     await self.connect()
                 kind = await self.poll_once()
-                failures = 0
-                yield kind, self.state
-                await asyncio.sleep(self.interval)
-            except (websockets.ConnectionClosed, asyncio.TimeoutError, OSError, ConnectionError) as e:
-                await self.close()
-                failures += 1
-                wait = random.uniform(0, min(30.0, 2.0 ** failures))   # full jitter, 최대 30 s
-                log.warning("허브 끊김 (%s) -> %.1f s 뒤 재연결", type(e).__name__, wait)
+                self.failures = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:                                    # 502, 401, 잘못된 JSON 까지 전부 재연결
+                try:
+                    await self.close()
+                except Exception:
+                    self.ws = None
+                self.failures += 1
+                wait = random.uniform(0, min(30.0, 2.0 ** self.failures))   # full jitter, 최대 30 s
+                log.warning("허브 실패 %d회 (%s: %s) -> %.1f s 뒤 재연결",
+                            self.failures, type(e).__name__, str(e)[:80], wait)
                 await asyncio.sleep(wait)
+                continue
+            yield kind, self.state
+            await asyncio.sleep(self.interval)
