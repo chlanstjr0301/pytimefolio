@@ -15,7 +15,7 @@ from pathlib import Path
 from .auth import Auth, DEFAULT_SESSION
 from .errors import TimefolioError
 from .hub import Hub
-from .orders import Order, Orders, Result, cap_weights, target_to_orders
+from .orders import Order, Orders, Result, cap_weights, sector_violations, target_to_orders
 from .rest import Rest
 from .state import PortfolioState
 from .transport import Transport
@@ -36,6 +36,7 @@ class Timefolio:
         self.orders: Orders | None = None
         self._feed_task: asyncio.Task | None = None
         self._first = asyncio.Event()
+        self.sec_of: dict[str, str] = {}             # 종목코드 -> GICS 섹터 (Universe)
 
     # ---------------------------------------------------------------- 수명
     async def __aenter__(self) -> "Timefolio":
@@ -45,6 +46,7 @@ class Timefolio:
         self.orders = Orders(self.rest, self.hub, self._daily_cap, allow_untested=self._allow_untested)
         self._feed_task = asyncio.create_task(self._feed(), name="pytimefolio-feed")
         await asyncio.wait_for(self._first.wait(), 30)
+        self.sec_of = {u["Id"]: str(u["sec"]) for u in await self.rest.universe()}
         n = await self._sync_count()
         log.info("준비 완료: pfId=%s, 영업일 %s, 오늘 주문 %d/%d건", pf, self.rest.biz_day, n, self._daily_cap)
         return self
@@ -138,12 +140,21 @@ class Timefolio:
     def plan(self, targets: dict[str, float], min_wei: float = 0.05, max_total: float = 100.0,
              prices: dict[str, float] | None = None, **price) -> list[Order]:
         """목표 비중(%) -> 주문 목록 (보내지 않는다). 보유 종목의 weiLimit 으로 먼저 자른다.
-        목표 합계가 max_total(%)을 넘으면 거부한다. 한도로 잘린 비중은 다른 종목에 나눠지므로 합계는 그대로다."""
+        목표 합계가 max_total(%)을 넘거나, 섹터 합계가 max(시장 비중 x 2, 10%)를 넘거나,
+        유니버스에 없는 종목이 있으면 거부한다. 한도로 잘린 비중은 다른 종목에 나눠지므로 합계는 그대로다."""
         total = sum(max(0.0, v) for v in targets.values())
         if total > max_total + 1e-9:
             raise ValueError(f"목표 비중 합계 {total:.2f}% > {max_total}%")
         caps = {p: float(r["weiLimit"]) for p, r in self.positions().items() if r.get("weiLimit") is not None}
         capped = cap_weights(targets, {k: v for k, v in caps.items() if k in targets})
+        # 섹터 한도: max(시장 섹터 비중 x 2, 10%). 넘으면 주문을 만들지 않는다
+        unknown = [p for p, w in capped.items() if w > 0 and p not in self.sec_of]
+        if unknown:
+            raise ValueError(f"투자 유니버스에 없는 종목: {unknown}")
+        mkt = {str(v.get("sec")): float(v.get("wei") or 0) for v in self.state.msecs.values() if isinstance(v, dict)}
+        bad = sector_violations(capped, self.sec_of, mkt)
+        if bad:
+            raise ValueError("섹터 한도 초과 (합계, 한도): " + ", ".join(f"{k} {w}% > {lim}%" for k, (w, lim) in bad.items()))
         orders = target_to_orders(capped, self.weights(), min_wei=min_wei, **price)
         # 서버는 주식 수를 내림하므로 1주 비중보다 작은 주문은 0주가 된다 -> 미리 뺀다
         kept, self.dropped = [], []

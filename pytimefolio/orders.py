@@ -95,6 +95,22 @@ def cap_weights(targets: dict[str, float], caps: dict[str, float]) -> dict[str, 
     return w
 
 
+def sector_violations(targets: dict[str, float], sec_of: dict[str, str], mkt: dict[str, float],
+                      floor: float = 10.0, mult: float = 2.0) -> dict[str, tuple[float, float]]:
+    """목표 비중의 섹터 합이 max(시장 섹터 비중 x mult, floor) 를 넘는 섹터 -> (합계, 한도).
+    섹터를 모르는 종목이 있으면 KeyError (추측하지 않는다)."""
+    tot: dict[str, float] = {}
+    for prod, w in targets.items():
+        if w > 0:
+            tot[sec_of[prod]] = tot.get(sec_of[prod], 0.0) + w
+    out = {}
+    for sec, w in tot.items():
+        lim = max(mult * mkt.get(sec, 0.0), floor)
+        if w > lim + 1e-9:
+            out[sec] = (round(w, 4), round(lim, 4))
+    return out
+
+
 def target_to_orders(targets: dict[str, float], current: dict[str, float], min_wei: float = 0.05,
                      **price) -> list[Order]:
     """목표 비중(%)과 현재 비중(%)의 차이를 주문으로 바꾼다. 차이가 min_wei 보다 작으면 건너뛴다.
