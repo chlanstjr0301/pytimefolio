@@ -1,0 +1,25 @@
+{\tabfont\begin{tabularx}{\linewidth}{R{6mm} >{\RaggedRight\arraybackslash}X >{\centering\arraybackslash}p{9mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm}}
+\thd{Step} & \thd{\code{lastT} sent} & \thd{Conn.} & \thd{(a) last t, this connection} & \thd{(b) any recent time} & \thd{(c) last t, this account} & \thd{Observed}\\
+\rowsep
+1 & 0 & A & \cellcolor{navyL}full & \cellcolor{navyL}full & \cellcolor{navyL}full & \cellcolor{navyL}full\\
+\rowsep
+2 & \code{t} of the previous reply & A & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta}\\
+\rowsep
+3 & \code{t} of the reply before that (6 s old) & A & \cellcolor{navyL}full & \cellcolor{navy}\textcolor{white}{delta\ $\times$} & \cellcolor{navyL}full & \cellcolor{navyL}full\\
+\rowsep
+4 & previous \code{t} minus 1 (never sent) & A & \cellcolor{navyL}full & \cellcolor{navy}\textcolor{white}{delta\ $\times$} & \cellcolor{navyL}full & \cellcolor{navyL}full\\
+\rowsep
+5 & previous \code{t} minus 60 & A & \cellcolor{navyL}full & \cellcolor{navy}\textcolor{white}{delta\ $\times$} & \cellcolor{navyL}full & \cellcolor{navyL}full\\
+\rowsep
+6 & previous \code{t} minus 3,600 & A & \cellcolor{navyL}full & \cellcolor{white}\textcolor{greyD}{?} & \cellcolor{navyL}full & \cellcolor{navyL}full\\
+\rowsep
+7 & previous \code{t} plus 100 & A & \cellcolor{navyL}full & \cellcolor{white}\textcolor{greyD}{?} & \cellcolor{navyL}full & \cellcolor{navyL}full\\
+\rowsep
+8 & \code{t} of the previous reply & A & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta}\\
+\rowsep
+8$'$ & the same value again & A & \cellcolor{navyL}full & \cellcolor{navy}\textcolor{white}{delta\ $\times$} & \cellcolor{navyL}full & \cellcolor{navyL}full\\
+\specialrule{0.8pt}{1pt}{1pt}
+9 & last \code{t} from connection A & B & \cellcolor{navyL}full & \cellcolor{navy}\textcolor{white}{delta\ $\times$} & \cellcolor{navy}\textcolor{white}{delta\ $\times$} & \cellcolor{navyL}full\\
+\rowsep
+10 & \code{t} of the previous reply & B & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta} & \cellcolor{navy}\textcolor{white}{delta}\\
+\end{tabularx}}

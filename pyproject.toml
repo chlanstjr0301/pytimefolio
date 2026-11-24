@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytimefolio"
+version = "0.1.0"
+description = "Unofficial asyncio API wrapper for Timefolio's Road to Fund Manager contest"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Choi Munseok" }, { name = "Choi Yeayun" }]
+dependencies = ["httpx[http2]>=0.28", "websockets>=13"]
+
+[project.urls]
+Repository = "https://github.com/chlanstjr0301/pytimefolio"
+
+[tool.setuptools]
+packages = ["pytimefolio"]

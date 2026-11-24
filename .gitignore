@@ -14,3 +14,13 @@ data/responses/v.json
 data/responses/neg.json
 logs/*.log
 preopen_cron.log
+.env
+.venv/
+data/
+logs/
+__pycache__/
+*.pyc
+report/*.aux
+report/*.log
+report/*.out
+report/*.bak

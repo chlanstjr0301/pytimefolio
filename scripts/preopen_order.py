@@ -25,7 +25,6 @@ import asyncio
 import datetime as dt
 import json
 import time
-from pathlib import Path
 
 import httpx
 import websockets
@@ -33,10 +32,6 @@ import websockets
 BASE = "https://contest.timefolio.net"
 RS = "\x1e"
 KST = dt.timezone(dt.timedelta(hours=9))
-ROOT = Path(__file__).resolve().parent.parent
-RESPONSES_DIR = ROOT / "data" / "responses"
-COOKIES_DIR = ROOT / "data" / "cookies"
-RESPONSES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def now() -> dt.datetime:
@@ -101,7 +96,12 @@ class Hub:
                 elif m.get("type") == 7:
                     raise websockets.ConnectionClosedOK(None, None)
                 elif m.get("type") == 1 and m.get("target") == "ReceivePortfolio":
-                    p = m["arguments"][0]
+                    args = m.get("arguments") or [None]
+                    p = args[0]
+                    if not isinstance(p, dict):          # 서버가 null을 보내는 경우가 있음 (2026-11-24 08:30 관찰)
+                        log(f"ReceivePortfolio 내용이 비어 있음: {raw[:200]!r}")
+                        self.last_t = 0                  # 다음 요청은 전체 스냅샷을 받도록
+                        return {}
                     self.last_t = p.get("t", self.last_t)
                     return p
 
@@ -166,14 +166,14 @@ async def main(a):
         hub = Hub(s["token"], s["biz"], a.pf)
         await hub.connect(http)
         st = State()
-        difflog = open(RESPONSES_DIR / "preopen_diffs.jsonl", "a", encoding="utf-8")
+        difflog = open("preopen_diffs.jsonl", "a", encoding="utf-8")
         st.update(await hub.poll(), difflog)
         before = next((r for r in st.pos.values() if r.get("prodId") == a.prod), None)
         log(f"주문 전 {a.prod}: {brief_pos(before)} | 미체결 포함 주문 {len(st.ords)}건")
 
         body = {"d": s["biz"], "pfId": a.pf, "prodId": a.prod, "ls": "L", "ex": "E", "wei": a.wei,
                 "exitAll": False, "hm0": a.hm0, "hm1": a.hm1, "limitIdx": 5, "limitPrc": None, "stopPrc": None}
-        if not a.live:
+        if not a.live and not a.monitor:
             log(f"연습 모드: 보낼 요청 = POST /api/Portfolio/AddOrder {json.dumps(body, ensure_ascii=False)}")
             return
         attempts = []
@@ -188,19 +188,23 @@ async def main(a):
                 code, text = None, f"{type(e).__name__}: {e}"
             log(f"AddOrder → {code} | 응답 {text[:300]!r}")
             attempts.append({"kst": now().isoformat(), "request": b, "status": code, "response": text})
-            json.dump(attempts, open(RESPONSES_DIR / "preopen_addorder.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            json.dump(attempts, open("preopen_addorder.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
             return code
 
-        code = await place(body)
-        if code == 401:                                   # 토큰 문제: 갱신 후 즉시 1회
-            s.update(await silent_refresh(http, a.jar))
+        if a.monitor:
+            log("기록 모드: 주문은 보내지 않고 상태 변화만 기록함 (재시도도 하지 않음)")
+            code = 400                                    # 재시도 경로를 끄기 위한 값
+        else:
             code = await place(body)
+            if code == 401:                               # 토큰 문제: 갱신 후 즉시 1회
+                s.update(await silent_refresh(http, a.jar))
+                code = await place(body)
         # 재시도 정책: 400(형식 오류)은 다시 보내도 같으므로 하지 않는다.
         # 200(에러 주문 여부는 아래에서 확인), 5xx, 타임아웃은 09:00 이후 주문 목록을 확인하고 없으면 1회 재시도.
         retry_pending = code != 400
         # 주문이 실시간 목록에 반영될 시간을 주기 위해, 마지막 시도 후 최소 30초는 기다린 뒤 확인한다 (중복 주문 방지)
         retry_at = max(now().replace(hour=9, minute=0, second=20, microsecond=0), now() + dt.timedelta(seconds=30))
-        if code == 400:
+        if code == 400 and not a.monitor:
             log("400: 요청 형식 오류로 보고 재시도하지 않음. 기록만 계속함")
 
         def live_order() -> dict | None:
@@ -246,14 +250,15 @@ async def main(a):
                 seen_pos = p
             await asyncio.sleep(3)
         log("기록 종료")
-        json.dump({"ords": list(st.ords.values())}, open(RESPONSES_DIR / "preopen_final_ords.json", "w", encoding="utf-8"),
+        json.dump({"ords": list(st.ords.values())}, open("preopen_final_ords.json", "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true", help="실제로 주문을 보냄. 없으면 연습 모드")
-    ap.add_argument("--jar", default=str(COOKIES_DIR / "jar2.txt"))
+    ap.add_argument("--monitor", action="store_true", help="주문은 보내지 않고 상태 변화만 기록 (이미 넣은 주문 추적용)")
+    ap.add_argument("--jar", default="data/cookies/jar2.txt")
     ap.add_argument("--pf", type=int, default=27032)
     ap.add_argument("--prod", default="A079550")          # LIG디펜스앤에어로스페이스
     ap.add_argument("--wei", type=float, default=0.3)     # 단위 %. 목표든 증분이든 소액
@@ -262,6 +267,8 @@ if __name__ == "__main__":
     ap.add_argument("--at", default="08:30", help="주문 시각 HH:MM 또는 now")
     ap.add_argument("--until", default="09:15", help="기록 종료 시각 HH:MM")
     a = ap.parse_args()
+    if a.live and a.monitor:
+        raise SystemExit("--live와 --monitor는 함께 쓸 수 없음")
     a.at_h, a.at_m = (0, 0) if a.at == "now" else map(int, a.at.split(":"))
     a.end_h, a.end_m = map(int, a.until.split(":"))
     asyncio.run(main(a))

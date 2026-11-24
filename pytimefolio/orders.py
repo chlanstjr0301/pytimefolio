@@ -1,0 +1,233 @@
+"""orders: 주문을 넣고, 정지하고, 끝날 때까지 추적한다.
+
+근거 (보고서 3장, 4장):
+- 운영사: 하루 100건 이상이면 IP 차단 가능, 몰아치는 요청 금지 -> 하루 80건(신규+정지), 쓰기 간격 1 s.
+- AddOrder 응답에 주문 ID 가 없다 -> 피드의 ords 에서 새로 생긴 주문을 찾아 ID 를 얻는다.
+- 응답을 못 받은 주문은 바로 다시 보내지 않는다 -> 30 s 기다렸다 피드에서 찾고, 없을 때만 한 번 더.
+- 주문의 wei 는 목표 비중이 아니라 주문 크기(%) -> target_to_orders 가 (목표 - 현재)로 바꾼다.
+- 끝난 주문은 모두 state=Done. cnclT 가 있으면 정지, 0 < cumQty < qty2ord 이면 일부 체결.
+- ModifyOrder/DeleteOrder 는 실측 전이라 넣지 않는다. 매도(ex=X)도 실측 전이라 allow_untested 가 필요.
+"""
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+import json
+import logging
+import math
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from .errors import AmbiguousState, RequestError, ServerError, TimefolioError
+from .hub import Hub
+from .rest import Rest, KST
+
+log = logging.getLogger("pytimefolio.orders")
+STATE_DIR = Path.home() / ".config" / "pytimefolio"
+
+
+# ---------------------------------------------------------------- 가격 도구
+def tick_size(price: float) -> int:
+    """KRX 주식 호가 단위 (2023년 개편 기준)."""
+    for bound, tick in ((2_000, 1), (5_000, 5), (20_000, 10), (50_000, 50), (200_000, 100), (500_000, 500)):
+        if price < bound:
+            return tick
+    return 1_000
+
+
+def round_to_tick(price: float, down: bool = True) -> int:
+    t = tick_size(price)
+    return int((math.floor if down else math.ceil)(price / t) * t)
+
+
+# ---------------------------------------------------------------- 주문 명세
+@dataclass
+class Order:
+    prod_id: str
+    wei: float                         # 주문 크기 (% of NAV), 양수
+    exit: bool = False                 # False = 진입/매수(ex=E), True = 청산/매도(ex=X, 실측 전)
+    limit_prc: int | None = None       # 지정가
+    limit_idx: int | None = None       # 상대호가 n (1~10), 자기호가는 -n
+    stop_prc: int | None = None
+    hm0: str | None = None             # None 이면 지금(즉시 실행)
+    hm1: str | None = None             # None 이면 즉시 실행, 있으면 시간 분할
+    exit_all: bool = False
+
+    def body(self, d: str, pf_id: int, now_hm: str) -> dict:
+        if sum(x is not None for x in (self.limit_prc, self.limit_idx, self.stop_prc)) != 1:
+            raise ValueError("limit_prc, limit_idx, stop_prc 중 정확히 하나를 지정해야 함")
+        return {"d": d, "pfId": pf_id, "prodId": self.prod_id, "ls": "L", "ex": "X" if self.exit else "E",
+                "wei": round(self.wei, 4), "exitAll": self.exit_all, "limitPrc": self.limit_prc,
+                "limitIdx": self.limit_idx, "stopPrc": self.stop_prc,
+                "hm0": self.hm0 or now_hm, "hm1": self.hm1}
+
+
+@dataclass
+class Result:
+    order_id: int
+    outcome: str                       # "filled", "stopped", "partly_filled_then_stopped"
+    cum_qty: int
+    qty2ord: int
+    avg_px: float | None
+    record: dict = field(repr=False, default_factory=dict)
+
+
+# ---------------------------------------------------------------- 목표 비중 -> 주문
+def cap_weights(targets: dict[str, float], caps: dict[str, float]) -> dict[str, float]:
+    """종목 한도를 넘는 비중을 잘라 나머지 종목에 비례 배분한다 (water-filling). 합계는 유지."""
+    w = {k: max(0.0, v) for k, v in targets.items()}
+    for _ in range(len(w)):
+        over = {k: v - caps[k] for k, v in w.items() if k in caps and v > caps[k] + 1e-12}
+        if not over:
+            break
+        excess = sum(over.values())
+        for k in over:
+            w[k] = caps[k]
+        free = {k: v for k, v in w.items() if (k not in caps or v < caps[k] - 1e-12) and v > 0}
+        tot = sum(free.values())
+        if tot <= 0:
+            break                       # 받을 종목이 없으면 남는 비중은 현금으로
+        for k, v in free.items():
+            w[k] = v + excess * v / tot
+    return w
+
+
+def target_to_orders(targets: dict[str, float], current: dict[str, float], min_wei: float = 0.05,
+                     **price) -> list[Order]:
+    """목표 비중(%)과 현재 비중(%)의 차이를 주문으로 바꾼다. 차이가 min_wei 보다 작으면 건너뛴다.
+    price 는 Order 의 가격·시간 인자 (예: limit_idx=5, hm0="09:00", hm1="09:30")."""
+    out = []
+    for prod in sorted(set(targets) | set(current)):
+        delta = targets.get(prod, 0.0) - current.get(prod, 0.0)
+        if abs(delta) >= min_wei:
+            out.append(Order(prod, abs(delta), exit=delta < 0, **price))
+    # 매도를 먼저 내야 현금이 생긴다
+    return sorted(out, key=lambda o: not o.exit)
+
+
+# ---------------------------------------------------------------- 주문 게이트
+class Orders:
+    def __init__(self, rest: Rest, hub: Hub, daily_cap: int = 80, min_interval: float = 1.0,
+                 allow_untested: bool = False):
+        self.r, self.hub = rest, hub
+        self.daily_cap, self.min_interval, self.allow_untested = daily_cap, min_interval, allow_untested
+        self._write_lock = asyncio.Lock()
+        self._last_write = 0.0
+
+    # ---- 하루 건수 (재시작해도 이어진다)
+    def _count_file(self) -> Path:
+        return STATE_DIR / f"orders_{self.r.biz_day}.json"
+
+    def used_today(self) -> int:
+        f = self._count_file()
+        return json.loads(f.read_text())["n"] if f.exists() else 0
+
+    def sync_count(self, server_count: int) -> int:
+        """서버의 오늘 주문 기록으로 로컬 건수를 맞춘다. 둘 중 큰 값을 쓴다."""
+        n = max(self.used_today(), server_count)
+        f = self._count_file()
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"n": n}))
+        return n
+
+    def _bump(self) -> None:
+        f = self._count_file()
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"n": self.used_today() + 1}))
+
+    # ---- 쓰기 요청 하나 (간격 1 s, 건수 기록)
+    async def _write(self, path: str, body: dict):
+        async with self._write_lock:
+            if self.used_today() >= self.daily_cap:
+                raise TimefolioError(f"하루 주문 한도 {self.daily_cap}건 도달")
+            wait = self._last_write + self.min_interval - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                return await self.r.a.call("POST", f"/api/Portfolio/{path}", json=body)
+            finally:
+                self._last_write = time.monotonic()
+                self._bump()                          # 응답을 못 받았어도 서버에 갔을 수 있으므로 센다
+
+    def _now_hm(self) -> str:
+        return dt.datetime.fromtimestamp(self.r.a.t.server_time(), KST).strftime("%H:%M")
+
+    # ---- 사전 점검
+    async def check(self, o: Order) -> None:
+        if not self.r.biz_day_is_today():
+            raise AmbiguousState(f"서버 영업일 {self.r.biz_day} != 오늘 {self.r.kst_today()}: 주문하지 않음")
+        if o.exit and not self.allow_untested:
+            raise TimefolioError("매도(ex=X)는 아직 실측 전. allow_untested=True 로만 허용")
+        warns = await self.r.validate_product(o.prod_id, entry=not o.exit)
+        if warns:
+            raise RequestError(f"{o.prod_id} ValidateProduct 경고: {warns}")
+        pos = self.hub.state.by_prod().get(o.prod_id)
+        if pos and not o.exit and pos.get("weiLimit") is not None:
+            if float(pos.get("wei") or 0) + o.wei > float(pos["weiLimit"]):
+                raise RequestError(f"{o.prod_id} 종목 한도 {pos['weiLimit']}% 초과")
+
+    # ---- 피드에서 새 주문 찾기
+    def _match(self, o: Order, before: set) -> dict | None:
+        for oid, rec in self.hub.state.ords.items():
+            if oid in before:
+                continue
+            if rec.get("prodId") == o.prod_id and rec.get("ex") == ("X" if o.exit else "E") \
+                    and abs(float(rec.get("wei") or 0) - o.wei) < 1e-6:
+                return rec
+        return None
+
+    async def _find(self, o: Order, before: set, timeout: float) -> dict | None:
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            rec = self._match(o, before)
+            if rec:
+                return rec
+            await asyncio.sleep(0.5)                   # 피드는 3 s 마다 갱신된다
+        return None
+
+    # ---- 주문
+    async def place(self, o: Order) -> int:
+        """주문을 넣고 피드에서 찾은 주문 ID 를 돌려준다."""
+        await self.check(o)
+        body = o.body(self.r.biz_day, self.r._pf(), self._now_hm())
+        before = set(self.hub.state.ords)
+        try:
+            await self._write("AddOrder", body)
+        except ServerError as e:                       # 도착 여부 모름 -> 바로 다시 보내지 않는다
+            log.warning("AddOrder 응답 없음 (%s) -> 30 s 뒤 피드 확인", e)
+            rec = await self._find(o, before, 30)
+            if rec:
+                return rec["Id"]
+            log.warning("피드에 없음 -> 한 번만 다시 보냄")
+            await self._write("AddOrder", body)
+        rec = await self._find(o, before, 15)
+        if not rec:
+            raise AmbiguousState(f"AddOrder 200 이었지만 15 s 안에 피드에서 {o.prod_id} 주문을 못 찾음")
+        log.info("주문 접수 Id=%s %s %.2f%% state=%s qty2ord=%s",
+                 rec["Id"], o.prod_id, o.wei, rec.get("state"), rec.get("qty2ord"))
+        return rec["Id"]
+
+    async def stop(self, ids: list[int]) -> None:
+        """주문 정지 (화면의 '정지'). 이미 끝난 주문은 빼고 보낸다."""
+        live = [i for i in ids if self.hub.state.ords.get(i, {}).get("state") != "Done"]
+        if live:
+            await self._write("CancelOrderBatch", {"d": self.r.biz_day, "pfId": self.r._pf(),
+                                                  "ords": ",".join(map(str, live))})
+
+    async def wait_done(self, oid: int, timeout: float | None = None) -> Result:
+        end = None if timeout is None else time.monotonic() + timeout
+        while True:
+            rec = self.hub.state.ords.get(oid, {})
+            if rec.get("state") == "Done":
+                cum, q = int(rec.get("cumQty") or 0), int(rec.get("qty2ord") or 0)
+                if rec.get("cnclT") is None:
+                    outcome = "filled"
+                elif cum > 0:
+                    outcome = "partly_filled_then_stopped"
+                else:
+                    outcome = "stopped"
+                return Result(oid, outcome, cum, q, rec.get("avgPx"), rec)
+            if end is not None and time.monotonic() > end:
+                raise asyncio.TimeoutError(f"주문 {oid} 가 {timeout} s 안에 끝나지 않음 (state={rec.get('state')})")
+            await asyncio.sleep(0.5)
