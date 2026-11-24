@@ -1,0 +1,29 @@
+\begin{tikzpicture}[x=1mm,y=1mm,
+  lane/.style={text=navy,minimum width=26mm,minimum height=5mm,font=\fontsize{7.5}{9}\selectfont\bfseries},
+  msg/.style={-{Stealth[length=1.6mm]},line width=0.5pt,color=navy},
+  rmsg/.style={-{Stealth[length=1.6mm]},line width=0.5pt,color=greyD},
+  lbl/.style={font=\fontsize{6.8}{8.2}\selectfont,align=center,fill=white,inner sep=0.8pt},
+  stp/.style={font=\fontsize{6.8}{8.2}\selectfont,anchor=west,text width=58mm,align=left,text=greyD}]
+\node[lane] (C) at (0,1) {Client}; \node[lane] (S) at (88,1) {Server};
+\draw[navy,line width=0.6pt] (-13,-1.5) -- (101,-1.5);
+\draw[greyM,line width=0.4pt] (0,-2) -- (0,-80); \draw[greyM,line width=0.4pt] (88,-2) -- (88,-80);
+\draw[msg]  (0,-8)  -- node[lbl,above]{\code{POST /hubs/main/negotiate?negotiateVersion=1} (Bearer)} (88,-8);
+\draw[rmsg] (88,-13) -- node[lbl,above]{\code{connectionId}, \code{connectionToken} (22 chars), 3 transports} (0,-13);
+\draw[msg]  (0,-22) -- node[lbl,above]{\code{GET /hubs/main?id=<connectionToken>}, \code{Upgrade: websocket}} (88,-22);
+\draw[rmsg] (88,-27) -- node[lbl,above]{\code{101 Switching Protocols}} (0,-27);
+\draw[msg]  (0,-36) -- node[lbl,above]{\texttt{\{"protocol":"json","version":1\}} 0x1E} (88,-36);
+\draw[rmsg] (88,-41) -- node[lbl,above]{\texttt{\{\}} 0x1E} (0,-41);
+\draw[msg]  (0,-50) -- node[lbl,above]{type 1 \code{RequestPortfolio} \{intv:3, auto:true, lastT, d, pfId\}} (88,-50);
+\draw[rmsg] (88,-55) -- node[lbl,above]{type 1 \code{ReceivePortfolio} \{t, kstNow, ...\}} (0,-55);
+\draw[navyM,line width=1.6pt] (0,-56) -- (0,-65); \node[lbl,fill=none,text=navyM,anchor=east] at (-1,-60.5) {3 s};
+\draw[msg]  (0,-66) -- node[lbl,above]{type 1 \code{RequestPortfolio} \{..., lastT = t of previous reply\}} (88,-66);
+\draw[rmsg] (88,-71) -- node[lbl,above]{type 1 \code{ReceivePortfolio} (delta)} (0,-71);
+\draw[rmsg,dashed] (88,-78) -- node[lbl,above]{type 6 (ping), both directions} (0,-78);
+\foreach \a/\b/\n/\t in {-6/-14/1/{\textbf{Negotiate}: a plain HTTP/2 request; WebSockets, Server-Sent Events and long polling are offered},
+  -20/-28/2/{\textbf{Connect}: a second TLS connection; the server does not offer WebSockets over HTTP/2. Browsers put the token in the URL, Python can send it as a header},
+  -34/-42/3/{\textbf{Handshake}: both sides agree on JSON messages},
+  -48/-79/4/{\textbf{Repeat}: the server sends only in reply. The client asks again 3 s after each reply; type 6 pings keep an idle connection open}} {
+  \draw[greyM,line width=0.5pt] (92,\a) -- (93,\a) -- (93,\b) -- (92,\b);
+  \node[stp] at (95,{(\a+\b)/2}) {\n.\ \t};
+}
+\end{tikzpicture}

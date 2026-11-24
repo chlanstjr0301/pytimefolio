@@ -1,0 +1,619 @@
+\documentclass[9pt]{article}
+\usepackage{dart}
+\usetikzlibrary{arrows.meta,positioning,calc,patterns}
+% ---------------------------------------------------------------- cover strings
+\newcommand{\covertitle}{pytimefolio: a Python API wrapper for the Road to Fund Manager competition}
+\newcommand{\covertitlelines}{2}
+\newcommand{\coversubtitle}{Measured: one reused connection, a 15-minute token and a 3-second poll}
+% ---------------------------------------------------------------- local helpers
+\newcommand{\seclabel}{\par\Needspace{9\baselineskip}\vspace{6pt}}
+\newcommand{\tabfont}{\fontsize{7.5}{9.4}\selectfont\hyphenpenalty=10000\exhyphenpenalty=10000\relax}
+\newcommand{\code}[1]{{\ttfamily\detokenize{#1}}}
+\newcommand{\verdict}[1]{\par\vspace{2pt}\noindent{\setlength{\fboxsep}{3pt}\colorbox{navyXL}{\parbox{\dimexpr\linewidth-6pt}{\fontsize{8.5}{11}\selectfont\RaggedRight\textbf{\color{navy}Design decision:} #1}}}\par\vspace{2pt}}
+\newcommand{\hl}{\rowcolor{navyXL}}
+\newcommand{\ms}{\,ms}
+\setlength{\tabcolsep}{3pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\arraystretch}{1.12}
+\begin{document}
+% =====================================================================================================
+% COVER
+% =====================================================================================================
+\input{cover.tex}\par
+{\color{navy}\fontsize{10}{12.8}\selectfont\bfseries Timefolio publishes no API for its Road to Fund Manager contest, so we reproduced the requests its web client makes and measured how the server behaves. A REST request takes 16.0\ms{} on a reused connection and 106.5\ms{} on a new one. The access token lasts 900\,s and the server accepts it for 300\,s after expiry; the refresh cookie expires seven days after login and renewal never extends it. Logging out revokes nothing on the server, so the cookie jar is a credential to guard. The live feed sends nothing unasked, before or during the session: the client asks every 3\,s, and during the session receives a delta of about 1.4\,kB instead of the 11,344-byte snapshot only when it echoes the exact \code{t} of the previous reply on the same connection. An open WebSocket keeps working after its token expires, but a new connection needs a fresh token. The organiser allows automated orders but may block an IP address that sends 100 or more orders a day. Section~4 covers orders: an order placed at 08:30 filled 7 shares between 09:00 and 09:08, and its \code{wei} is an order size. Section~5 tests the finished wrapper live: it renewed its session without logging in, merged the feed exactly, placed and stopped a buy and a sell, drops orders smaller than one share and rejects targets that break the contest's sector limit. Its \code{guidelines()} showed this week's turnover at 4.8\% against a 5\% minimum. The tests found two defects, both fixed.\par}
+\vspace{4pt}
+
+\figblock[wide]{1}{Each layer was measured, and each measurement fixes one decision for the wrapper}[What we found per layer and what the wrapper does about it; measured before and during the session on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{26mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{62mm}}
+\thd{Layer} & \thd{Finding} & \thd{Wrapper design}\\
+\textbf{2.1 Transport} & HTTP/2 over TLS 1.3 behind nginx; no HTTP/3. A new connection costs 106.5\ms, a reused one 16.0\ms. The server closes a connection after 15 to 30\,s idle. The WebSocket needs its own HTTP/1.1 connection & One HTTP/2 client for REST and one WebSocket, both kept for the life of the process; the wrapper drops idle REST connections itself after 10\,s\\\rowsep
+\textbf{2.2 Authentication} & JWT in the response body (900\,s) plus cookies set at login (7 days). The cookies renew the token; renewal neither extends nor rotates them. 300\,s of tolerance after expiry. Logout only clears the browser's cookies; a saved copy still renews & Refresh at 12 minutes or on any 401; log in only when renewal fails or the jar has under one day left; cookie jar kept outside the repository with mode 0600; no Logout on shutdown\\\rowsep
+\textbf{2.3 Queries} & Bearer header. The login reply lists every portfolio. A non-trading date returns another day's data without an error. The business day rolls over between 06:02 and 07:07 KST & Dates come from \code{currBizDay}. Portfolio chosen by contest ID, reset flag and end date\\\rowsep
+\textbf{2.4 Live feed} & SignalR hub; it sends only in reply, before and during the session, so the client asks every 3\,s. Deltas only when \code{lastT} equals the previous \code{t} on the connection; \code{updated} holds the changed fields per record, keyed by the record \code{Id} as a string. An open connection outlives its token & One request in flight. A snapshot replaces the state; a delta merges changed fields into records found by \code{int(Id)}. \code{t} is echoed, never interpreted\\\rowsep
+\textbf{4 Orders} & \code{AddOrder} returns no order ID; the order appears in the feed and in \code{Orders}. \code{wei} is the order size. Every finished order ends in \code{Done}; a stopped one also has \code{cnclT} & Orders matched among new feed records by ticker, side and size; finished means \code{state} is \code{Done}; stopped if \code{cnclT} is set; stop through \code{CancelOrderBatch}\\\rowsep
+\textbf{5.1 Wrapper tests} & Start-up, feed, buy and sell work; \code{plan()} accepted a 139\% total & Totals above 100\% rejected; sells as \code{ls} = L, \code{ex} = X\\\rowsep
+\textbf{5.2 Share size} & \code{qty2ord} is rounded down; one share is 0.02\% to 0.14\% & Orders under one share's weight dropped\\\rowsep
+\textbf{5.3 Guidelines} & Feed and \code{Violations} give all four rules; turnover 4.8\% this week & \code{guidelines()} reports; \code{plan()} checks sectors\\
+\end{tabularx}}}{Measured 05:38 to 09:55 KST on 24 Nov 2026 with one account (portfolio 27032); the market opened at 09:00. Timings in 2.1 were taken before the open and may differ under market-hours load.}{contest.timefolio.net, DART Quant Team}
+
+\vspace{3pt}
+{\fontsize{7}{8.6}\selectfont\color{greyD}These results describe the server as observed on one morning, without documentation from the organiser; the server can change, so the wrapper checks them at run time. No other participant's account data was requested. Code: \href{https://github.com/chlanstjr0301/pytimefolio}{\code{github.com/chlanstjr0301/pytimefolio}}.\par}
+\clearpage
+% =====================================================================================================
+% 1. INTRODUCTION
+% =====================================================================================================
+\seclabel
+\claim{1\quad Without a published API, we measured the server through the requests its web client makes}
+
+\lead{We are building an API wrapper so that a program, rather than a person at a browser, can trade in the contest.} Road to Fund Manager is a paper-trading contest run by Timefolio Asset Management; participants enter tickers and target weights on a web page. An algorithmic strategy needs to log in, read balances, follow positions as they change and place orders on its own. The wrapper handles that communication so the strategy code never deals with tokens, sockets or date formats.
+
+\lead{The organiser publishes no API, so every assumption the wrapper makes has to come from observation.} That covers how authentication works, how long tokens last, how dates are read and what the live messages contain. Guessing is risky because the server rarely complains: as Section~2.3 shows, a wrong date returns another day's data with HTTP 200, so a wrong assumption produces wrong numbers instead of an error.
+
+\lead{The organiser allows automated orders within two limits.} In reply to our enquiry on 24 Nov 2026, the organiser stated that it provides no official API and does not prohibit automating orders with scripts or web drivers. An account that places 100 or more orders in a day may have its IP address blocked, and so may traffic that loads the system in a short time; the organiser recommends a delay between requests. We kept a copy of the reply. We ran no load or rate-limit tests; our busiest test sent about five requests per second for one second (Section~2.1).
+
+\lead{We worked in three steps.} First we observed: after logging in we extracted API paths and live-feed method names from the JavaScript the site serves, and recorded WebSocket messages in the browser's developer tools. Then we reproduced each request with curl to read headers, cookies and response bodies; for the WebSocket, which curl cannot handle, we implemented the SignalR protocol in Python without a client library. Where a behaviour had more than one explanation, such as the condition for a delta, we wrote down the competing hypotheses and designed requests that would give a different result under each.
+
+\lead{The report runs from measurement to design to orders.} Section~2 covers the protocol layers: transport (2.1), authentication (2.2), queries (2.3) and the live feed (2.4); most of it was measured before the open and rechecked after 09:00 where the session could change the result. Section~3 sets out the wrapper's goals, constraints and structure. Section~4 covers the order layer, tested during the session. Section~5 tests the finished wrapper against the live server: its start-up, feed and orders (5.1), the check that keeps orders from rounding to zero shares (5.2) and the contest's investment guidelines (5.3). \figref{2} gives the test setup; Appendix~A defines the terms and Appendix~B lists the design decisions with their evidence.
+
+\figblock{2}{Test setup}{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{22mm} >{\RaggedRight\arraybackslash}X}
+\thd{Item} & \thd{Value}\\
+Time & 05:38 to 09:25 KST, 24 Nov 2026, and wrapper tests 09:27 to 09:55; the market opened at 09:00. The server's business day (\code{currBizDay}) changed from 23 Nov to 24 Nov during this window\\\rowsep
+Client & WSL (Ubuntu) on Windows 11; curl 8 with HTTP/2; Python 3.14, httpx 0.28.1 with h2, websockets 17.4. PC clock 3\,s ahead of the server's \code{Date} header\\\rowsep
+Account & One participant account; live portfolio 27032 (RFM round 13, 12 Oct to 30 Nov 2026)\\\rowsep
+Server & \code{https://contest.timefolio.net} (221.168.38.40); TLS 1.3 with a Let's Encrypt certificate; REST under \code{/api}, SignalR at \code{/hubs/main}\\\rowsep
+Load & Peak about 5 requests per second (the timing runs); live-feed requests at the browser's 3\,s pace; 7 orders and 5 stops in the day, against the organiser's threshold of 100 orders\\\rowsep
+Code & \href{https://github.com/chlanstjr0301/pytimefolio}{\code{https://github.com/chlanstjr0301/pytimefolio}}\\
+\end{tabularx}}}{Network timings hold for this client and time of day only.}{DART Quant Team}
+
+% =====================================================================================================
+% 2.1 TRANSPORT
+% =====================================================================================================
+\seclabel
+\claim{2.1\quad Reusing one HTTP/2 connection cuts a request from 106.5\ms{} to 16.0\ms}
+
+\lead{The site runs on HTTP/2 over TLS 1.3 and does not offer HTTP/3.} The TLS handshake selects HTTP/2 through ALPN, and responses carry no \code{alt-svc} header, so the server does not advertise HTTP/3 (QUIC). The handshake uses TLS 1.3 with \code{TLS_AES_256_GCM_SHA384} and a four-certificate chain from Let's Encrypt.
+
+\lead{The two channels share the upper layers and differ below them (\figref{3}).} A REST request travels as one HTTP/2 stream carrying the \code{Authorization: Bearer} header; later requests open new streams on the same connection and skip DNS, TCP and TLS altogether. An nginx front end receives the request (its own HTML error page appears when a request body is malformed, Section~2.2) and passes it to the ASP.NET application, which its error messages and its SignalR hub identify. The live feed starts with an ordinary HTTP/2 POST to negotiate, then opens a second connection and upgrades it with an HTTP/1.1 \code{Upgrade: websocket} request. The second connection is the server's doing, not our client's: the server's HTTP/2 settings frame does not include \code{ENABLE_CONNECT_PROTOCOL}, so it does not support WebSockets over HTTP/2 (RFC 8441), and any client, a browser included, needs a separate connection.
+
+\Needspace{70mm}\figblock[wide]{3}{REST requests share one HTTP/2 connection; the live feed needs a second connection, upgraded to a WebSocket}[Layers per channel, from the server down to the connection set-up]{%
+\input{figs/fig03.tex}}{The server's SETTINGS frame was read with Python's \code{h2} library. The front end is identified by its error page, the application by its error messages.}{DART Quant Team}
+
+\lead{Most of the cost of a new connection is set-up, and a reused connection avoids it.} We sent five requests to the same endpoint (\code{Portfolio/Violations}) in one curl run and repeated the run ten times at one-second intervals. The first request in each run pays for the DNS lookup, the TCP connection and the TLS handshake; the other four reuse the connection (\figref{4}). The stage medians add up to 106.0\ms; the median of the totals, 106.5\ms, comes from different runs.
+
+\figblock[wide]{4}{A new connection costs 106.5\ms, a reused one 16.0\ms; DNS varies the most}[Time per stage of a REST request, 10 runs (40 reused requests); bars are medians, dots single runs]{%
+\input{figs/fig04.tex}}{curl's \code{time_*} values are cumulative from the start of the request; stage times are differences between adjacent values. ``Request to first byte'' runs from the end of the TLS handshake to the first byte of the reply. All 50 requests returned HTTP 200. 06:03 KST, 24 Nov 2026.}{DART Quant Team}
+
+\lead{Two of the stages are specific to our set-up, not to the server.} WSL keeps no DNS cache, so every new connection paid 30 to 94\ms{} for a lookup that a desktop system would usually answer from its cache. curl's 28.9\ms{} for TLS also includes its own start-up: timed in Python on an open TCP connection, the TLS 1.3 handshake itself took 12.4\ms, one round trip. The TCP stage varies by only 0.9\ms, so the network path is stable. Taking the 11.1\ms{} round trip out of the 16.0\ms{} reused request leaves about 5\ms{} on the server, so a wrapper request is almost all network latency.
+
+\lead{The server closes an idle connection after 15 to 30\,s.} httpx itself drops a connection after 5\,s idle by default, which hid the server's behaviour in our first try. With that limit raised to 600\,s, a connection was reused after 5\,s and 15\,s of silence and replaced after 30\,s. A wrapper that keeps the connection longer than the server does will send its next request into a closed socket and pay for a retry, so the wrapper's own limit has to sit below 15\,s.
+
+\lead{From the Python client during the session, a request on a reused connection took 31 to 39\ms.} That is about twice curl's 16.0\ms{} before the open; the two figures differ in client, time of day and market-hours load, and we have not separated these causes. The first request of a fresh process took 1.2 to 1.3\,s, almost all of it one-time module loading and SSL set-up (the virtual environment lies on the Windows drive). A second client created in the same process paid 130\ms{} for its new connection, so the one-time cost belongs to the process, not to the connection.
+
+\lead{We discarded an earlier run of the timing test because it mixed in failed requests.} It used a token that had already expired, and we had not recorded status codes; its fastest reused requests, 12.2\ms, fit a server rejecting the token before touching any data. \figref{4} uses only the repeat run, with a valid token and a status code on every request.
+\verdict{the wrapper keeps one \code{httpx.AsyncClient(http2=True)} for the life of the process, with \code{keepalive_expiry} set to 10\,s, below the server's 15\,s. It connects by host name, since the certificate names \code{contest.timefolio.net}; connecting by IP address would save one lookup at the cost of hostname verification. At start the wrapper calls \code{warm_up()}, which sends one cheap request, so the 1.2 to 1.3\,s start-up cost is paid before the first order.}
+
+% =====================================================================================================
+% 2.2 AUTHENTICATION
+% =====================================================================================================
+\seclabel
+\claim{2.2\quad A 900-second token and seven-day cookies that renewal never extends and logging out never revokes}
+
+\lead{Logging in returns the access token and the list of portfolios in one reply.} \code{POST /api/Auth/Login} with \texttt{\{"email", "password"\}} returns HTTP 200, a 435-character JWT access token (\code{accessToken}), six portfolios (\code{pfs}), 16 contests (\code{ctsts}) and the server's current business day (\code{currBizDay}). The same reply carries the participant's phone number and date of birth, so the wrapper keeps only the fields it needs and never logs this reply in full.
+
+\lead{The login reply sets five credentials with different lifetimes; the wrapper manages the first two (\figref{5}).}
+
+\figblock[wide]{5}{The access token lasts 15 minutes and the refresh cookie 7 days; the wrapper manages these two}[Credentials returned by a login at 05:38:54 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{24mm} >{\RaggedRight\arraybackslash}p{19mm} >{\RaggedRight\arraybackslash}p{32mm} >{\RaggedRight\arraybackslash}p{46mm} >{\RaggedRight\arraybackslash}X}
+\thd{Name} & \thd{Carried in} & \thd{Lifetime} & \thd{Attributes} & \thd{Used for}\\
+\hl\code{accessToken} & Response body & \textbf{900\,s (15 min)}, JWT \code{exp} $-$ \code{iat} & JWT; claims include \code{Id}, \code{exp}, \code{iat}, \code{nbf}, \code{role} & \code{Authorization: Bearer} header on every API call\\\rowsep
+\hl\code{refreshToken} & Cookie & \textbf{7 days} (to 05:38 KST, 1 Dec) & HttpOnly, Secure, SameSite=Strict, path \code{/} & Getting a new access token from \code{Auth/SilentRefresh}, together with the other root-path cookies\\\rowsep
+\code{asset_token} & Cookie & 1 hour & HttpOnly, path \code{/assets/app/} & Downloading the page code served only to logged-in users\\\rowsep
+\code{userid} & Cookie & 7 days & Not HttpOnly & User ID read by the page's JavaScript\\\rowsep
+\code{nxdid} & Cookie & 1 year & HttpOnly, SameSite=Lax & Probably a device identifier\\
+\end{tabularx}}}{Cookie values were not recorded, only names and attributes. The purpose of \code{nxdid} is inferred from its name and lifetime.}{contest.timefolio.net response headers, DART Quant Team}
+
+\lead{Renewal needs the cookies set at login, and it does not move the seven-day deadline.} \code{POST /api/Auth/SilentRefresh} with the root-path cookies and no \code{Authorization} header returns HTTP 200 and a new access token. Sending \code{refreshToken} alone was refused with a 401, so the wrapper keeps and sends the whole cookie jar. The refresh cookie's expiry was 20:38:54 UTC on 30 Nov both before and after the call, and the reply set no new \code{refreshToken}. Renewal therefore neither slides the expiry forward nor rotates the token, and repeated renewals with the same cookie all succeeded. During the session two \code{SilentRefresh} calls sent at the same moment with the same cookies both returned 200, a third sent right after also returned 200, and none set a new \code{refreshToken}; concurrent renewals do not invalidate each other.
+
+\lead{The server accepts an expired access token for 300\,s.} A first test bracketed the cut-off between 3.5 and 5.6 minutes after expiry. A second token, issued at 08:16:43 by the server's clock, was sent again just before and after five minutes past its expiry: by the server's \code{Date} header it was accepted 4~min~57\,s after expiry and refused 5~min~07\,s after (\figref{6}). The cut-off lies inside that 10-second interval, which matches the 300-second default clock skew in ASP.NET's JWT validation; the 401's wording also comes from Microsoft's .NET identity library.
+
+\figblock[wide]{6}{The server accepts a token up to 300\,s after expiry; the refresh cookie's deadline stays fixed through renewal}[Lifetime of one access token and of the refresh cookie from the 05:38:54 login; tolerance edges from the second test, placed relative to expiry]{%
+\input{figs/fig06.tex}}{Times are KST. The 401 carried \code{www-authenticate: Bearer error="invalid_token", error_description="The token expired at ..."} (UTC). Offsets in the second test were measured with the server's \code{Date} header, since our PC clock ran 3\,s ahead. Token lifetime read from the decoded JWT; cookie expiry from \code{Set-Cookie} before and after renewal.}{DART Quant Team}
+
+\lead{Our PC clock ran 3\,s ahead of the server's, and that matters for timing expiry.} In the second test the local clock read 08:36:43 when the server's \code{Date} header read 23:36:40 UTC. A wrapper that schedules renewal by its own clock against the JWT's \code{exp} inherits that error, so it measures the offset from the \code{Date} header of each reply and corrects for it.
+
+\lead{A malformed request and a failed login get different errors from different parts of the stack.} A request body with broken JSON (a raw carriage return inside a string) drew an HTML 400 page in nginx's format. Valid JSON with wrong credentials drew a 401 from the API. A 400 points to a bug in the code that built the request and will fail again on retry; a 401 is cured by a token refresh or a new login.
+
+\lead{Logging in again leaves the existing session working.} After a second login on the same account, the first session's cookies still renewed its token, and the browser stayed logged in after a page reload. The wrapper and the web page can therefore run at the same time.
+
+\lead{Logging out asks the browser to delete its cookies and revokes nothing on the server.} \code{POST /api/Auth/Logout} returned 200 with the body \texttt{\{\}} and \code{Set-Cookie} headers that blank \code{refreshToken}, \code{userid} and \code{asset_token} with an expiry date in 1970. We had saved a copy of the refresh cookies before the call. After the logout that copy still renewed the token (\code{SilentRefresh} 200), the access token issued before the logout still worked on REST (200), and two other sessions of the same account kept working. Anyone holding a copy of the cookie jar can therefore obtain access tokens until the seven-day expiry, whatever the owner does in the browser. Each login also adds one more session that lives seven days.
+\verdict{the wrapper renews the access token through \code{SilentRefresh} 12 minutes after issue by the server's clock, or at once on a 401, after which it repeats the request once; a 401 is sent before the server acts on the request, so repeating even an order cannot create a duplicate. It never logs in while the stored session works, since every login adds a session that cannot be ended early. It logs in with the stored credentials only when renewal fails or when the cookie jar has less than one day left, so the seven-day expiry never falls in the middle of a session. The cookie jar is a credential that logging out cannot revoke, so the wrapper stores it outside the repository with owner-only permissions (mode 0600), and it does not call \code{Logout} on shutdown, since the call ends nothing on the server and would blank the stored jar, which forces a new login, and a new session, at the next start. A 400 is raised as an error without retrying. The 300\,s tolerance is a server setting that can change, so the schedule does not rely on it.}
+
+% =====================================================================================================
+% 2.3 QUERIES
+% =====================================================================================================
+\seclabel
+\claim{2.3\quad A Bearer header authenticates every query, and a non-trading date returns another day's data without an error}
+
+\lead{Every REST call has the form \texttt{/api/\{area\}/\{name\}}.} The public JavaScript bundle names only the \code{Auth} paths. The trading screen's code lives under \code{/assets/app/}, which is served only with the \code{asset_token} cookie (\figref{5}), so we took the other paths from the code downloaded after login (\figref{7}). The administrator areas (\code{Master}, \code{Admin}) are outside the wrapper's scope.
+
+\figblock{7}{The paths a wrapper needs fall in five areas; bold paths have been called}[Main REST paths extracted from the web client's code]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{17mm} >{\RaggedRight\arraybackslash}X}
+\thd{Area} & \thd{Paths (selection)}\\
+Auth & \textbf{\code{Login}}, \textbf{\code{SilentRefresh}}, \textbf{\code{Logout}}\\\rowsep
+Portfolio & Orders: \textbf{\code{AddOrder}}, \code{ModifyOrder}, \code{CancelOrder}, \code{DeleteOrder}, \textbf{\code{CancelOrderBatch}}, \textbf{\code{ValidateProduct}}, \code{OrderLogs}, \textbf{\code{Orders}}\\
+ & State: \textbf{\code{PfBs}}, \textbf{\code{Session}}, \textbf{\code{Trades}}, \code{Fills}, \code{FillAggrs}, \textbf{\code{Universe}}, \textbf{\code{Violations}}, \code{ViolationsSummary}, \code{PerfCharts}\\\rowsep
+Contest & \code{List}, \code{PfList}, \code{TopRankDetail}, \code{TopPick}\\\rowsep
+Analysis & \code{PfAsOf}, \code{PrftByProd}, \code{HistPosChart}, \code{TrendChart}, \code{ActivityChart}\\\rowsep
+Util & \code{SearchProducts}\\
+\end{tabularx}}}{Request bodies of the order paths are given in \figref{21}; those of \code{ModifyOrder}, \code{CancelOrder} and \code{DeleteOrder} come from the client code only.}{contest.timefolio.net web client code, DART Quant Team}
+
+\lead{A Bearer header is enough; queries need no cookies.} A \code{GET} to \code{Portfolio/Violations} for portfolio 27032 returned HTTP 200 with the access token in the header and 401 without it.
+
+\lead{The live portfolio has to be chosen by contest ID, reset flag and end date, because two portfolios can share a contest name.} The \code{pfs} list gains an entry for each contest entered and each reset (\figref{8}). Round 13 has two entries with the same contest name, and picking by name can return 24735, which ended with a reset.
+
+\figblock{8}{The live portfolio is the one in the contest that has not been reset and has not reached its end date}[The six entries in \code{pfs} from the login reply]{%
+{\tabfont\begin{tabularx}{\linewidth}{R{10mm} >{\RaggedRight\arraybackslash}p{25mm} >{\RaggedRight\arraybackslash}p{27mm} >{\RaggedRight\arraybackslash}p{13mm} >{\RaggedRight\arraybackslash}X}
+\thd{Id} & \thd{Contest (\code{ctstId})} & \thd{Period} & \thd{\code{invalid}} & \thd{Display status}\\
+\hl\textbf{27032} & \textbf{Round 13 (91)} & \textbf{12 Oct to 30 Nov} & \textbf{absent} & \textbf{live}\\\rowsep
+24735 & Round 13 (91) & 1 Oct to 8 Oct & True & ended, reset\\\rowsep
+23745 & Round 12 (90) & 3 Jul to 31 Aug & absent & ended\\\rowsep
+21980 & Round 12 (90) & 1 Jul to 2 Jul & True & ended, reset\\\rowsep
+19252 & Round 11 (86) & 1 Apr to 29 May & absent & ended\\\rowsep
+18762 & Practice (1) & 5 Feb to 30 Apr & True & ended, reset\\
+\end{tabularx}}}{\code{active} is False for all six entries, including the live one. \code{invalid} appears only on reset portfolios.}{contest.timefolio.net, DART Quant Team}
+
+Two field names mislead. \code{active} is False for all six entries, including the live 27032, so it says nothing about which portfolio is running. The reset flag is the presence of \code{invalid}, so a missing key has to be read as False. If the rule below matches anything other than exactly one portfolio, the wrapper stops instead of guessing.
+
+\par\noindent\begin{minipage}{\linewidth}\fontsize{8.5}{11}\selectfont\ttfamily
+\hspace*{4mm}select\_pf(ctstId):\\
+\hspace*{8mm}cands $\leftarrow$ \{ pf $\in$ pfs : pf.ctstId = ctstId $\wedge$ $\neg$pf.invalid $\wedge$ pf.lastD $\geq$ currBizDay \}\\
+\hspace*{8mm}return the single element of cands, else raise\end{minipage}\par
+
+\lead{The date parameter accepts any date, and the server decides which day's data to return (\figref{9}).}
+
+\figblock{9}{A weekend date returns the previous trading day, a future date the latest one, and none of them raises an error}[\code{Portfolio/Violations} replies by requested date (server business day: 23 Nov)]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} R{11mm} R{11mm} >{\RaggedRight\arraybackslash}X}
+\thd{Requested date} & \thd{Status} & \thd{Bytes} & \thd{Day the server used, and the evidence}\\
+22 Nov (Sunday) & 200 & 400 & 20 Nov, the previous trading day; the small-cap weight is 3.21\%, against 3.33\% on 23 Nov\\\rowsep
+23 Nov (current day) & 200 & 400 & 23 Nov\\\rowsep
+24 Nov (next trading day) & 200 & 400 & 23 Nov, the latest; byte-for-byte identical to the 23 Nov reply\\\rowsep
+25 Dec (holiday, after the contest) & 200 & 342 & None; every value is zero\\
+\end{tabularx}}}{Replies compared with \code{cmp}; where they differed, we printed the differing fields.}{DART Quant Team}
+
+The Sunday reply differs from the 23 Nov reply in one value, the weight of the portfolio's only small-cap stock. Its price did not change on 23 Nov (previous close and close both KRW~14,840), while the portfolio's value fell 3.59\% that day. A stock whose price stays flat gains weight as the portfolio shrinks, so its 20 Nov weight should be $3.33 \times (1 - 0.0359) = 3.21$, the value the Sunday request returned.
+
+The server's business day also differs from the calendar after midnight. \code{currBizDay} still read 23 Nov at 06:02:10 on 24 Nov and read 24 Nov at 07:06:44, so the server moves to the next business day between those two times, before the 09:00 open. A request made before the rollover would carry the previous day's date.
+
+\lead{Three more read endpoints give the order window, the investable universe and the position history (\figref{10}).} \code{Session} returns 09:00 to 15:20, the window in which orders execute; 15:20 is when the closing auction begins. \code{Universe} lists 2,648 investable stocks with their GICS sector. Some tickers mix letters and digits (\code{A0015M0}), following the Korea Exchange's newer code format, so tickers are handled as strings. \code{Orders} takes a date range, \code{d0} and \code{d1}. Our first request sent \code{d} and got an empty list for 23 Nov, although the live feed showed a filled order on that day; the web page's own request during the session sent \code{d0} and \code{d1} and received every order of the range, finished ones included (Section~4).
+
+\figblock[wide]{10}{Session, Universe, Trades and Orders answer; Orders needs a date range}[\code{Portfolio} read endpoints called with \code{pfId=27032} and \code{d} (07:33 KST), \code{Orders} with \code{d0} and \code{d1} (09:16 KST), 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{15mm} R{10mm} R{13mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{44mm}}
+\thd{Path} & \thd{Status} & \thd{Records} & \thd{Content} & \thd{Use in the wrapper}\\
+\code{Session} & 200 & 1 & \code{hm0} 09:00, \code{hm1} 15:20 & Bounds for order start and end times\\\rowsep
+\code{Universe} & 200 & 2,648 & \code{Id}, \code{nm}, \code{sec} (GICS); some tickers alphanumeric & Ticker validation, sector of each stock\\\rowsep
+\code{Trades} & 200 & 62 & One record per position from entry to exit; 23 still open at 07:33, matching the 23 holdings; 64 records after the day's entries; UTC times & Position history and realised profit\\\rowsep
+\code{Orders} & 200 & range & Every order from \code{d0} to \code{d1}, \code{Done} ones included: \code{Id}, \code{state}, \code{qty2ord}, \code{cumQty}, \code{avgPx}, \code{cnclT}, \code{genT}, \code{lastMCV}, \code{sgn}. Sent with \code{d} instead, it returned an empty list & Day's order count at start-up\\\rowsep
+\code{PfBs} & 404 & & Not found at the paths tried (\code{Portfolio}, \code{Contest}, \code{Analysis}), as GET or POST & Not used; balances come from the live feed\\
+\end{tabularx}}}{GET with query parameters unless noted. The \code{Orders} parameters were read from the web page's own request.}{DART Quant Team}
+\verdict{the wrapper fills request dates from the server's \code{currBizDay}, never from the PC clock, and refuses to place orders while \code{currBizDay} differs from the KST calendar date. It does not collect history day by day; a caller that adds such a loop has to check each date against a trading calendar first, or the same day's data is stored under several dates. It chooses the portfolio with the rule above.}
+
+% =====================================================================================================
+% 2.4 LIVE FEED
+% =====================================================================================================
+\seclabel
+\claim{2.4\quad The live feed answers only when asked, and sends a delta only for an exact echo of the previous t}
+
+\lead{Connecting to the SignalR hub takes four steps (\figref{11}).} Balances, orders and sector weights come through an ASP.NET Core SignalR hub at \code{/hubs/main}. Navy arrows are sent by the client, grey arrows by the server.
+
+\Needspace{100mm}\figblock[wide]{11}{After an HTTP negotiation, a WebSocket connection and a handshake, the client asks and the server answers}[Connection steps and message format; every message is one JSON object followed by the separator byte 0x1E]{%
+\input{figs/fig11.tex}}{In a browser recording from 28 Oct 2026 the client sent each request 3\,s after the previous reply. Type 1 is an invocation of a method on the other side; type 6 is a ping and type 7 a close.}{Browser developer tools, Python implementation, DART Quant Team}
+
+\lead{The hub sends nothing unless asked, before or during the session.} In the browser recording the browser asks again 3\,s after each reply. Our client got the same behaviour before dawn with \code{auto} set to true and to false, with replies in 20 to 84\ms. From 09:05 to 09:08, with prices moving, a client that sent one request and then stayed silent for 60\,s received nothing but the type-6 pings every 15\,s. The wrapper therefore has to send every request itself.
+
+\lead{On the same connection, echoing the previous reply's \code{t} returns only what changed.} A request with \code{lastT=0} returns a snapshot of 9,915 bytes holding balances (\code{bs}), orders (\code{ords}), positions (\code{pos}) and market sector weights (\code{msecs}), plus five smaller top-level fields that Section~5.3 uses for the contest's guidelines. A request carrying the previous reply's \code{t} as \code{lastT} returns an empty delta of 577 bytes in which those four fields are \code{null} and \code{pos_diff}, \code{ords_diff} and \code{msecs_diff} appear instead, each with the fields \code{added}, \code{removed}, \code{updated} and \code{ords_chgd}. One more case: right after our order (Section~4) one reply had \code{null} arguments, so the receive loop must accept an empty reply and fall back to a snapshot.
+
+\lead{During the session a delta is about one eighth of a snapshot.} At 3\,s polling the snapshot grew to 11,344 bytes (9,915 before the open) and deltas ran from 1,053 to 1,912 bytes, about 1.4\,kB on average, against one seventeenth of a snapshot for the empty deltas before the open. \code{pos_diff.updated} listed 8 to 23 of the 23 holdings per reply, and \code{msecs_diff} changed about every fourth reply (about 12\,s). \code{t} advanced by 3 per reply and sometimes by 4, so it follows wall-clock seconds.
+
+\lead{\code{updated} carries only the changed fields of each record, keyed by the record's \code{Id} as a string.} Two entries from one reply read \code{"5745534": {"close": 89900, "prft": 1008000}} and \code{"5745535": {"close": 1180000, "prft": 3230000, "chPct": 8.76, "wei": 4.86}}: 2 to 4 of the 28 keys a position record has in a snapshot (Appendix~A lists all 28). \code{ords_diff} has the same form, for example \code{{"added": [], "removed": [], "updated": {"1649882": {"cumQty": 6, "avgPx": 352416.67}}, "ords_chgd": {}}}. Snapshot records carry \code{Id} as an integer, so a delta key used as it arrives would match no record; the wrapper converts each key with \code{int()} before merging. The keys are position record IDs, not tickers (\code{prodId}), so the wrapper also keeps an index from \code{prodId} to \code{Id}.
+
+\lead{Merging deltas this way reproduces the server's state exactly, so goal G2 is met.} At 09:35 two connections polled the hub at the same moments for 15 rounds. Connection A applied deltas, merging the \code{updated} fields by \code{int(Id)}; connection B asked for a full snapshot every round (\code{lastT=0}). In all 15 rounds both connections received the same \code{t}, and A's accumulated \code{pos} and \code{ords} records equalled B's snapshot field for field: 0 differences in 15 of 15 rounds. An earlier check compared the merged state with a snapshot taken about 3\,s after the last delta and found 13 records that differed only in \code{close}, \code{prft}, \code{wei} and \code{chPct}, the fields that move with prices in 3\,s; comparing replies with the same \code{t} removes that gap.
+
+\lead{We tested three rules for when the server sends a delta.} (a) \code{lastT} matches the \code{t} last sent on this connection; (b) \code{lastT} is any recent time; (c) \code{lastT} matches the \code{t} last sent to this account, on any connection. We varied \code{lastT} over eleven requests on two connections so that the rules predicted different replies (\figref{12}).
+
+\figblock[wide]{12}{Only rule (a) predicts every reply; (b) fails at five steps and (c) at one}[Predicted and observed reply type by \code{lastT} sent; eleven requests 3\,s apart on two connections, 06:06 KST, 24 Nov 2026]{%
+\input{figs/fig12.tex}}{Shaded cells with $\times$ are predictions the observation contradicts; grey text marks predictions it confirms; in the Observed column, deltas are shaded; ? marks a step where the rule predicts nothing definite. Step 3 sends a \code{t} the server really sent 6\,s earlier; step 4 a value it never sent; steps 5 to 7 test for a tolerance window; step 8$'$ repeats the value just used; step 9 opens connection B with connection A's last \code{t}. A reply is full when it contains \code{pos} and a delta when it contains \code{pos_diff}; full replies were 9,915 bytes and deltas 577.}{DART Quant Team}
+
+\lead{Rule (a) is the only one consistent with all eleven replies.} The server appears to keep, for each connection, the last snapshot it sent and its \code{t}. When \code{lastT} equals that \code{t}, it sends the current state minus that snapshot; otherwise it sends everything. Either way, the current state becomes the new reference.
+
+This rule keeps the wrapper's state in step with the server. If a reply is lost, the next request carries an old \code{t}, the server sees no match and sends a snapshot, so the client can never apply one delta after skipping another. A reconnect also gets a snapshot without special handling. Sending a second request before the first reply arrives does no harm to correctness, but the second \code{lastT} is already stale, so the reply is a full snapshot, 17 times the size of an empty delta before the open.
+
+\lead{\code{t} runs exactly nine hours (32,400\,s) ahead of Unix time.} A reply received at 05:48:27 KST carried \code{t} = 1795499307. Read as UTC that is 05:48:27 on 24 Nov, matching the reply's \code{kstNow}, but the Unix time of 05:48:27 KST is 1795466907. The server evidently converts Korean wall-clock time to epoch seconds as if it were UTC. Other timestamps are correct: the JWT \code{exp} is true Unix time and order records carry UTC strings ending in \code{Z}. Under rule (a) the offset does no harm as long as the client echoes \code{t} without computing with it.
+
+\lead{An open WebSocket keeps working after its token expires, but a new connection needs a valid token.} We opened a connection with a token expiring at 07:21:41 and kept polling every 3\,s (\figref{13}). Replies kept arriving for 8 minutes past expiry, 382 in all, past the 300\,s after which REST requests are refused. A negotiation sent afterwards with the same token got a 401. The server therefore checks the token when a connection is made, not on each message, which matches the default in ASP.NET Core SignalR.
+
+\figblock[wide]{13}{The open WebSocket kept answering past the token's expiry and the REST cut-off; a new negotiation with the same token was refused}[Cumulative replies on one connection polled every 3\,s, token expiring at 07:21:41 KST on 24 Nov 2026]{%
+\input{figs/fig13.tex}}{Points are the one-per-minute log lines of the test script. Shading follows \figref{6}: light for the 300\,s tolerance, hatched for the 10-second interval holding the cut-off, pale where REST requests are refused. The cut-off is placed from the second tolerance test, made with another token.}{DART Quant Team}
+
+\lead{The receive loop follows from these findings (\figref{14}).} It keeps one request in flight, replaces its state on a snapshot, merges the changed fields of a delta into the records they name and echoes \code{t} unread.
+
+\figblock{14}{The receive loop keeps one request in flight and replaces or updates its state, depending on the reply}[Pseudocode for the live-feed loop]{%
+\begin{minipage}{0.94\linewidth}\fontsize{8.3}{10.8}\selectfont\ttfamily
+poll(hub):\\
+\hspace*{4mm}lastT $\leftarrow$ 0\\
+\hspace*{4mm}loop:\\
+\hspace*{8mm}send(RequestPortfolio(lastT, d = currBizDay, pfId))\\
+\hspace*{8mm}p $\leftarrow$ await receive()\hspace{3mm}{\rmfamily\color{greyD}// one request in flight}\\
+\hspace*{8mm}if p = null: lastT $\leftarrow$ 0\hspace{3mm}{\rmfamily\color{greyD}// ask for a snapshot next}\\
+\hspace*{8mm}elif p.pos $\neq$ null: state $\leftarrow$ full(p)\hspace{3mm}{\rmfamily\color{greyD}// snapshot: replace}\\
+\hspace*{8mm}else: for each diff in p.*\_diff:\hspace{3mm}{\rmfamily\color{greyD}// delta: merge}\\
+\hspace*{12mm}add diff.added; drop diff.removed\\
+\hspace*{12mm}for (i, f) in diff.updated: state[int(i)] $\mid$= f\hspace{3mm}{\rmfamily\color{greyD}// changed fields only}\\
+\hspace*{8mm}if p $\neq$ null: lastT $\leftarrow$ p.t\hspace{3mm}{\rmfamily\color{greyD}// echoed, not read}\\
+\hspace*{8mm}await sleep(3)\\
+\hspace*{4mm}on reconnect: renew token if expired; negotiate; lastT $\leftarrow$ 0
+\end{minipage}}{\code{updated} keys are record \code{Id}s sent as strings; snapshot \code{Id}s are integers, hence \code{int(i)}. $\mid$= merges a dict of changed fields into the stored record. In a 15-round test against snapshots with the same \code{t} on a second connection, the merged \code{pos} and \code{ords} records matched field for field in every round (Section~2.4).}{DART Quant Team}
+\verdict{the wrapper's receive loop keeps one request in flight. A snapshot replaces the state, a delta merges its changed fields into the records found by \code{int(Id)}, and an empty reply resets \code{lastT}. \code{t} is an opaque value to echo; when a time is needed, the wrapper reads \code{kstNow}. The WebSocket authenticates with a header, so the token stays out of URLs and access logs. Token renewal does not reconnect the WebSocket; a reconnection always renews the token first if it has expired.}
+
+% =====================================================================================================
+% 3. DESIGN
+% =====================================================================================================
+\seclabel
+\claim{3\quad The wrapper keeps one session alive and leaves strategy and market data to the caller}
+
+\lead{The wrapper's job is to turn the contest site into a small Python interface a strategy can trust.} \figref{15} lists what it must do and what it leaves out. The main exclusion is market data. The contest server reports a price only for the stocks the portfolio holds (\code{close} in each position record), and the club's market data comes from the Korea Investment \& Securities API. Folding that API into the wrapper would tie a contest client to a broker's authentication and rate limits, so the caller passes prices in and the wrapper stays a client for one site.
+
+\figblock[wide]{15}{Five goals and five non-goals bound the wrapper}[Scope of pytimefolio]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{8mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{60mm}}
+\thd{} & \thd{Goal} & \thd{Measure of success}\\
+G1 & Stay logged in for the whole contest without a person & No manual login between the start and 30 Nov; renewals and logins logged\\\rowsep
+G2 & Give the strategy the portfolio's current state & State no older than one poll (3\,s); equal to a fresh snapshot after every delta\\\rowsep
+G3 & Place, stop and track orders within the organiser's limits and the contest's guidelines & Never more than 80 orders a day; no request sent less than 1\,s after the previous write; no orders planned from targets that break the total, universe, stock or sector rule\\\rowsep
+G4 & One asyncio interface for REST and the live feed & Feed and orders run in one event loop without blocking each other\\\rowsep
+G5 & Stop on ambiguity instead of guessing & Raises when the portfolio rule matches $\neq 1$ entry, when \code{currBizDay} disagrees with the date, when a placed order is not found in the feed within 15\,s, or on a 400\\
+\specialrule{0.8pt}{1pt}{1pt}
+\thd{} & \thd{Non-goal} & \thd{Reason}\\
+N1 & Market data (prices, order books) & The caller supplies prices; another API, another set of limits\\\rowsep
+N2 & Strategy and portfolio construction & The wrapper turns target weights into orders; choosing targets is the caller's\\\rowsep
+N3 & Browser automation & Slower and more fragile than the HTTP requests the page itself makes\\\rowsep
+N4 & Several accounts or other participants' portfolios & One account per process; other participants' data is not ours to query\\\rowsep
+N5 & Probing rate limits & The organiser may block an IP address for bursts of traffic\\
+\end{tabularx}}}{G = goal, N = non-goal. The 80-order cap leaves a margin of 20 under the organiser's threshold.}{DART Quant Team}
+
+\lead{Every hard number in the design comes from a measurement or from the organiser (\figref{16}).} Where the server sets a limit, the wrapper sets its own a step inside it, so that a small change on the server side does not break the wrapper.
+
+\Needspace{95mm}\figblock[wide]{16}{Each constraint sets one parameter, a margin inside the measured limit}[Constraints and the wrapper parameters they set]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{50mm} >{\RaggedRight\arraybackslash}p{22mm} >{\RaggedRight\arraybackslash}X}
+\thd{Constraint} & \thd{Source} & \thd{Wrapper parameter}\\
+Fewer than 100 orders a day per account & Organiser & Daily order cap 80, counted across restarts\\\rowsep
+No bursts of traffic & Organiser & At least 1\,s between writes; live feed every 3\,s\\\rowsep
+Access token valid for 900\,s, plus 300\,s tolerance & 2.2 & Renew at 720\,s by the server's clock\\\rowsep
+Cookies fixed at 7 days from login; each login adds a 7-day session & 2.2 & Log in only when renewal fails or the jar has less than one day left\\\rowsep
+Logout revokes nothing on the server & 2.2 & Cookie jar stored outside the repository with mode 0600; no Logout on shutdown\\\rowsep
+Two simultaneous renewals both succeed & 2.2 & No lock needed for correctness; one renewal in flight to save requests\\\rowsep
+PC clock 3\,s off the server's & 2.2 & Clock offset taken from each reply's \code{Date} header\\\rowsep
+Idle connections closed after 15 to 30\,s & 2.1 & \code{keepalive_expiry} 10\,s\\\rowsep
+First request of a fresh Python process 1.2 to 1.3\,s & 2.1 & \code{warm_up()} at start, before any timed request\\\rowsep
+Business day rolls over 06:02 to 07:07 & 2.3 & No orders until \code{currBizDay} equals the KST date\\\rowsep
+Delta only for an exact echo of \code{t} & 2.4 & One request in flight; snapshot after any gap\\\rowsep
+Delta keys are record \code{Id}s as strings, with changed fields only & 2.4 & Delta merge keyed by \code{int(Id)}; index from \code{prodId} to \code{Id}\\\rowsep
+New WebSocket needs a valid token & 2.4 & Renew before every reconnect\\\rowsep
+\code{AddOrder} returns no order ID & 4 & Orders matched among new feed records by ticker, side and size; never resent blindly\\\rowsep
+Stopped and filled orders both end in \code{Done} & 4 & Finished $=$ \code{state} \code{Done}; stopped if \code{cnclT} set; partly filled if also 0~$<$~\code{cumQty}~$<$~\code{qty2ord}\\\rowsep
+Water-filling keeps the target total & 5.1 & \code{plan()} rejects targets above \code{max_total}, 100\%\\\rowsep
+\code{qty2ord} rounded down to whole shares & 5.2 & \code{plan()} drops orders below one share's weight, price $\times$ 100 / \code{bs.na}\\\rowsep
+Stock weight up to \code{weiLimit} (Samsung Electronics 40\%, others 15\%) & Contest & \code{plan()} caps targets by water-filling; a buy past the limit is refused before sending\\\rowsep
+Sector weight up to max(2 $\times$ market sector weight, 10\%) & Contest & \code{plan()} rejects targets over a sector limit or outside \code{Universe}\\\rowsep
+Small caps (market cap under KRW 1 trillion) up to 30\% in total; weekly turnover at least 5\% & Contest & Reported by \code{guidelines()}; not checked by \code{plan()} (5.3)\\
+\end{tabularx}}}{Section numbers refer to this report. ``Contest'' means the guideline page of the contest site.}{DART Quant Team}
+
+\lead{A trading day runs in five phases (\figref{17}).} The schedule puts all login and set-up work after the business-day rollover and before the open, so that nothing but polling and orders happens during the session.
+
+\figblock[wide]{17}{The wrapper finishes set-up before 08:50 and only polls and trades during the session}[A trading day for a strategy that rebalances once at the open]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{20mm} >{\RaggedRight\arraybackslash}p{40mm} >{\RaggedRight\arraybackslash}X}
+\thd{Time (KST)} & \thd{Phase} & \thd{Wrapper actions}\\
+07:10 & Start & Renew the token or log in; read \code{currBizDay} and stop if it is not today; choose the portfolio\\\rowsep
+07:15 & Load & Open the live feed and take a snapshot; load \code{Universe} for each stock's sector; count the day's orders\\\rowsep
+08:00 to 08:50 & Plan (caller) & Caller computes target weights from its own prices; \code{plan()} checks them against the universe, the total, stock and sector limits and one share's weight, and converts them into orders; \code{guidelines()} reports the turnover and small-cap totals\\\rowsep
+08:50 & Submit & \code{rebalance()} checks the daily cap, then sends sells first, 1\,s apart; each order confirmed by its appearance in the feed's \code{ords}\\\rowsep
+09:00 to 15:20 & Session & Poll every 3\,s; renew the token every 12 minutes; stop orders on the caller's request\\
+\end{tabularx}}}{An order placed at 08:30 was \code{Working} by 08:33, began filling at 09:00, its start time, and was \code{Done} at 09:08 (Section~4).}{DART Quant Team}
+
+\lead{We chose direct HTTP over the alternatives because it is the fastest and the one the page itself uses (\figref{18}).} Other contest tools we found on GitHub drive the web page with Playwright; that avoids reverse-engineering requests but makes every action wait on page rendering and breaks when the layout changes.
+
+\figblock[wide]{18}{Direct HTTP with asyncio beats browser automation and threads on speed and on how much can break}[Alternatives considered]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{36mm}}
+\thd{Decision} & \thd{Alternatives and why they lost} & \thd{Chosen}\\
+How to reach the server & Browser automation (Playwright): seconds per action, breaks on layout changes, needs a browser on the server & HTTP requests as the page makes them\\\rowsep
+Concurrency & Synchronous requests: the feed would block orders. Threads: shared state needs locks. The work is waiting on the network, so the GIL costs nothing & asyncio in one thread\\\rowsep
+Feed transport & Server-Sent Events and long polling are also offered; long polling adds a request per message & WebSocket, with the others as fallback\\\rowsep
+Token on the WebSocket & In the URL, as browsers must: ends up in access logs & \code{Authorization} header\\\rowsep
+Retry of a failed order & Resend at once: risks a duplicate, since the reply has no order ID & Check the feed first, resend at most once\\
+\end{tabularx}}}{}{DART Quant Team}
+
+\lead{The code splits into seven modules, one per layer of Sections~2 and~4 plus a \code{client} module that joins them (\figref{19}).} Each module imports only modules above it in the table, so the transport and authentication can be tested without a live feed, and the order arithmetic without a server. An eighth file, \code{errors}, defines one exception per failure: \code{AuthError} for a 401, \code{RequestError} for a 400, \code{ServerError} for a 5xx or a lost connection and \code{AmbiguousState} for goal G5, all subclasses of \code{TimefolioError}.
+
+\Needspace{80mm}\figblock[wide]{19}{Seven modules, one per layer, with the order checks between the strategy and the server}[Module layout of pytimefolio, in import order]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{18mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{22mm}}
+\thd{Module} & \thd{Responsibility} & \thd{Rests on}\\
+\code{transport} & One \code{httpx.AsyncClient(http2=True)}, \code{keepalive_expiry} 10\,s, timeout 15\,s; \code{warm_up()}; server clock offset as the median of the last 9 \code{Date} headers; status codes turned into exceptions; a GET repeated once on a dropped connection, a POST never & 2.1, 2.2\\\rowsep
+\code{auth} & Renewal from \code{session.json} at start, login only if it fails; renewal at 720\,s by the server's clock or on a 401, one at a time; login when the jar has under one day left; jar written with mode 0600; Bearer header on every call & 2.2\\\rowsep
+\code{rest} & \code{currBizDay} and the check against the KST date; portfolio rule; \code{Session}, \code{Universe}, \code{Trades}, \code{Violations}, \code{Orders} (\code{d0}, \code{d1}), \code{ValidateProduct} & 2.3, 4\\\rowsep
+\code{state} & Snapshot replacement; delta merge keyed by \code{int(Id)}; null replies; index by \code{prodId}; other top-level fields (\code{cmpl}, \code{tags}) kept for the guidelines & 2.4, 5.3\\\rowsep
+\code{hub} & SignalR negotiate, WebSocket with the token in a header, handshake, one request in flight, pong to pings, reconnect with exponential backoff and full jitter up to 30\,s & 2.4\\\rowsep
+\code{orders} & Order body; water-filling, sector check, target-to-order conversion; order gate with the daily cap (a count file per business day), 1\,s between writes, pre-checks (business day, \code{ValidateProduct}, \code{weiLimit}), confirmation in the feed, stop through \code{CancelOrderBatch} skipping finished orders, outcome when \code{Done} & 4, 5\\\rowsep
+\code{client} & \code{Timefolio}: start-up, state views, \code{buy}, \code{sell}, \code{stop}, \code{wait}, \code{nav()}, \code{share_weight()}, \code{plan()}, \code{rebalance()}, \code{guidelines()} & 3, 5\\
+\end{tabularx}}}{Water-filling: when a target breaks a stock's \code{weiLimit}, the excess is spread over the other targets in proportion to their weights, so the total is unchanged. \code{errors} is not listed; every module may raise its exceptions.}{DART Quant Team}
+
+% =====================================================================================================
+% 4. ORDERS
+% =====================================================================================================
+\seclabel
+\claim{4\quad Orders are placed, stopped and tracked through the feed; wei is an order size}
+
+\lead{We placed one small order at 08:30:05 to see whether the server accepts orders before the open.} The body, taken from the web client's code, named the date, the portfolio, the ticker (\code{A079550}, LIG Nex1), the side (\code{ls} = L), an entry code (\code{ex} = E), a weight of 0.3\%, a start and end time (09:00 to 09:10) and a price type. The server answered HTTP 200 with \texttt{\{"data":"","warnings":[]\}}.
+
+\lead{The reply carries no order ID, so the wrapper has to find its own order in the live feed.} The live-feed reply right after the order had \code{null} arguments (Section~2.4); by 08:33 the feed's \code{ords} listed it with ID 1649882. Because a lost reply leaves the wrapper not knowing whether an order exists, the wrapper never resends at once: on a timeout, a 5xx or a lost connection it waits 30\,s and looks for the order in the feed before sending it once more, and on a 400 it never retries.
+
+\lead{\code{wei} is the size of the order, not the target weight.} Before the order the portfolio held 3 shares, 0.13\% of its value. If \code{wei} = 0.3 were a target, the order would ask for about 4 more shares; as an order size of 0.3\% it asks for about 7. The order reported \code{qty2ord} = 7, so \code{wei} on an order is an increment in percent of portfolio value, and the wrapper converts a target into an order as target minus current weight.
+
+\lead{The order was \code{Working} before the open and filled one share about every 70\,s, finishing 2 minutes before the end of its window (\figref{20}).} The first share filled at 09:00:30 and the seventh at 09:08:07, when the state changed to \code{Done}; the only states observed were \code{Working} and \code{Done}. The position ended at 10 shares, 0.43\% of the portfolio.
+
+\figblock{20}{The 7 shares filled in steps between 09:00:30 and 09:08:07, inside the 09:00 to 09:10 window}[Order 1649882 (LIG Nex1, \code{wei} 0.3) as seen in the live feed]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{16mm} R{16mm} R{16mm} >{\RaggedRight\arraybackslash}X}
+\thd{Time (KST)} & \thd{Filled of 7} & \thd{Shares held} & \thd{\code{state}}\\
+08:33 & 0 & 3 & \code{Working}\\\rowsep
+09:00:30 & 1 & 4 & \code{Working}\\\rowsep
+09:04 & 4 & 7 & \code{Working}\\\rowsep
+09:06 & 6 & 9 & \code{Working}\\\rowsep
+\hl 09:08:07 & 7 & 10 & \code{Done}\\
+\end{tabularx}}}{\code{cumQty} from the feed at 3\,s polling; the 09:04 and 09:06 rows give the totals reached by those times, so single fills between rows are not shown. Shares held = 3 before the order plus \code{cumQty}. Average fill price KRW~352,714.29.}{DART Quant Team}
+
+\lead{The position's average price includes the 0.1\% fee.} The position held 3 shares at an average price of 381,381 before the order, and 7 shares filled at an average of 352,714.29. The final average price, 361,561.2, equals $(3 \times 381{,}381 + 7 \times 352{,}714.29 \times 1.001)/10$ exactly, so \code{avgPrc} adds the fee to the fill price. The wrapper computes profit from \code{avgPrc} as the server reports it and does not add the fee a second time.
+
+\lead{We captured the order requests from the web client while placing and stopping orders by hand (\figref{21}).} From 09:16 to 09:22 we recorded the page's own requests in the browser's developer tools and read the remaining bodies from its JavaScript bundle. \code{AddOrder}, \code{CancelOrderBatch}, \code{ValidateProduct} and \code{Orders} were seen live. \code{ModifyOrder} and \code{DeleteOrder} were not: the live order dialog offers only a stop, and the page shows modify and delete only for orders in its list of un-accepted or failed orders, so their bodies come from the client code and are untested.
+
+\Needspace{115mm}\figblock[wide]{21}{Placing, stopping and listing orders were captured live; modify and delete come from the client code only}[Order paths under \code{/api/Portfolio}, their bodies and replies; captured 09:16 to 09:22 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{27mm} >{\RaggedRight\arraybackslash}p{9mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{40mm} >{\RaggedRight\arraybackslash}p{19mm}}
+\thd{Path} & \thd{Verb} & \thd{Parameters or body} & \thd{Reply} & \thd{Source}\\
+\hl\code{AddOrder} & POST & \code{d}, \code{pfId}, \code{prodId}, \code{ls}, \code{ex}, \code{wei}, \code{exitAll}, \code{limitPrc}, \code{limitIdx}, \code{stopPrc}, \code{hm0}, \code{hm1} & 200, \texttt{\{"data":"","warnings":[]\}}; no order ID & Live; sell form in 5\\\rowsep
+\hl\code{CancelOrderBatch} & POST & \code{d}, \code{pfId}, \code{ords}: order IDs joined by commas in one string, e.g.\ \code{"1650197"} & 200, empty body. The page labels it ``stop'' & Live\\\rowsep
+\code{CancelOrder} & POST & \code{d}, \code{pfId}, \code{ordId} & Not observed & Client code\\\rowsep
+\code{ModifyOrder} & POST & \code{d}, \code{ordId}, \code{wei}, \code{exitAll}, \code{limitPrc}, \code{limitIdx}, \code{stopPrc}, \code{hm0}, \code{hm1}; no \code{pfId} & Not observed & Client code, untested\\\rowsep
+\code{DeleteOrder} & POST & \code{d}, \code{pfId}, \code{ordId}; offered for un-accepted orders & Not observed & Client code, untested\\\rowsep
+\code{ValidateProduct} & GET & \code{d}, \code{prodId}, \code{entry=true} & 200, \texttt{\{"data":"","warnings":[]\}} & Live\\\rowsep
+\code{Session} & GET & \code{d}, \code{pfId}; called when the order dialog opens & 200, window 09:00 to 15:20 & Live\\\rowsep
+\code{Orders} & GET & \code{d0}, \code{d1}, \code{pfId} & 200, every order of the range, \code{Done} ones included & Live\\
+\specialrule{0.8pt}{1pt}{1pt}
+\thd{Field} & \thd{} & \thd{Values} & \thd{Meaning} & \thd{}\\
+\code{limitPrc} & & price; \code{limitIdx} = null & Limit order at a fixed price & \\\rowsep
+\code{limitIdx} & & $n$ or $-n$, $n$ from 1 to 10 & $n$ ticks on the opposite side ($n$) or on the order's own side ($-n$) & \\\rowsep
+\code{stopPrc} & & price & Stop order & \\\rowsep
+\code{hm0}, \code{hm1} & & now and null; or start and end time & Immediate; or fills spread over the window & \\
+\end{tabularx}}}{Highlighted rows are the two calls the wrapper needs for its first version. ``Live'' means the request and reply were recorded from the page; ``client code'' means the body was read from the JavaScript bundle.}{contest.timefolio.net web client, DART Quant Team}
+
+\lead{Every finished order ends in \code{Done}, so how it ended has to be read from \code{cnclT} and \code{cumQty}.} The bundle defines five states: \code{Generated}, \code{Accepted}, \code{Working}, \code{Done} and \code{Deleted}. The page disables modify and stop when \code{state} is \code{Done} or \code{cnclT} is not null. An \code{Orders} query at 09:31 showed all three stopped Samsung orders as \code{Done}, with \code{cnclT} set and \code{cumQty} 0 of \code{qty2ord} 4, the same state as the two filled orders. The wrapper therefore reads an order as finished when \code{state} is \code{Done}, as stopped when \code{cnclT} is also set, and as partly filled when \code{cnclT} is set and 0~$<$~\code{cumQty}~$<$~\code{qty2ord}. When the states \code{Generated}, \code{Accepted} and \code{Deleted} appear has not been observed.
+
+\lead{The day's tests used 5 orders and 3 stops, far below the organiser's threshold of 100.} The 08:30 LIG Nex1 order came from our script and filled. Two Samsung Electronics orders were placed by hand: one of 0.1\% at 09:13 (\code{qty2ord} 4), which we stopped, and one of 0.3\% at 09:15 at 10 ticks on the opposite side, which filled 13 of 13 shares. Two more Samsung orders of 0.1\% (\code{qty2ord} 4 each) with a limit of KRW~151,800, 20\% below the market so that they could not fill, were placed at 09:18 (immediate) and 09:20 (window 15:00 to 15:20) to capture the requests, and both were stopped within a minute.
+\verdict{the wrapper places orders with \code{AddOrder} and confirms each one by finding it among the records that appear in the feed's \code{ords} after the request, matched by ticker, side and size; if none appears within 15\,s it raises instead of guessing. It stops orders through \code{CancelOrderBatch}, joining IDs with commas and leaving out orders already \code{Done}, and treats an order as finished when \code{state} is \code{Done}, as stopped when \code{cnclT} is set as well, and as partly filled when a stopped order has 0~$<$~\code{cumQty}~$<$~\code{qty2ord}. \code{ModifyOrder} and \code{DeleteOrder} stay out of the wrapper until their bodies have been tested live; until then an amendment is a stop followed by a new order, which counts as one more order against the daily cap.}
+
+\figblock[wide]{22}{Five questions remain: four can be settled by tests, one only by the organiser}[Open questions and how each will be settled]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{7mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{62mm}}
+\thd{} & \thd{Question} & \thd{How it will be settled}\\
+Q1 & Do the \code{ModifyOrder} and \code{DeleteOrder} bodies taken from the client code work? & Capture when the page offers them for an un-accepted order; the wrapper does not use them\\\rowsep
+Q2 & Does the 100-order threshold count stops and amendments? & Ask the organiser; until then the wrapper counts stops as orders\\\rowsep
+Q3 & Does a password change revoke existing refresh tokens? & Change the password, then renew with a cookie jar saved before the change\\\rowsep
+Q4 & When do the states \code{Generated}, \code{Accepted} and \code{Deleted} appear? & Log every state change in \code{ords}, including orders the server refuses\\\rowsep
+Q5 & At what moment does the server count a sector or small-cap violation: at any time in the session, or at the close? Sector limits move with market weights (5.3) & Log \code{Violations} and the feed's sector weights every hour and compare\\
+\end{tabularx}}}{Settled during the session on 24 Nov: whether the hub pushes (2.4), the format of \code{updated} and the exactness of the delta merge (2.4), parallel renewal (2.2), the \code{Orders} parameters (2.3), the final state of filled and stopped orders (4), the sell order form (5.1), the source of net assets (5.2) and the feed fields behind the guidelines (5.3).}{DART Quant Team}
+
+% =====================================================================================================
+% 5.1 TESTS
+% =====================================================================================================
+\seclabel
+\claim{5.1\quad Start-up, feed, a buy and a sell worked against the live server; plan() needed a check on targets above 100\%}
+
+\lead{We wrote the wrapper to the design of Section~3 and tested it against the live server from 09:27 to 09:55 KST on 24 Nov 2026.} The package \code{pytimefolio/} holds the seven modules of \figref{19}. A strategy uses one class, \code{Timefolio}, from the \code{client} module (\figref{23}). Price arguments (\code{**price}) are \code{limit_prc}, \code{limit_idx} or \code{stop_prc}, exactly one of them, with optional \code{hm0} and \code{hm1} (\figref{21}).
+
+\figblock{23}{One class gives the strategy the portfolio's state, the order calls and the guideline status}[Use of the \code{Timefolio} client]{%
+\begin{minipage}{0.94\linewidth}\fontsize{8.3}{10.8}\selectfont\ttfamily
+async with Timefolio(ctst\_id=91) as tf:\\
+\hspace*{4mm}w = tf.weights()\hspace{3mm}{\rmfamily\color{greyD}\# prodId $\rightarrow$ current wei (\%)}\\
+\hspace*{4mm}orders = tf.plan(targets, limit\_idx=5)\hspace{3mm}{\rmfamily\color{greyD}\# dry run: nothing is sent}\\
+\hspace*{4mm}tf.dropped\hspace{3mm}{\rmfamily\color{greyD}\# orders plan() left out as smaller than one share}\\
+\hspace*{4mm}ids = await tf.rebalance(targets, limit\_idx=5)\\
+\hspace*{4mm}i = await tf.buy("A005930", 0.1, limit\_prc=150700)\hspace{3mm}{\rmfamily\color{greyD}\# or tf.sell}\\
+\hspace*{4mm}await tf.stop(i)\hspace{3mm}{\rmfamily\color{greyD}\# stop(*ids) takes several}\\
+\hspace*{4mm}r = await tf.wait(i)\\
+\hspace*{4mm}{\rmfamily\color{greyD}\# r.outcome: filled, stopped or partly\_filled\_then\_stopped}\\
+\hspace*{4mm}{\rmfamily\color{greyD}\# r.cum\_qty, r.qty2ord, r.avg\_px}\\
+\hspace*{4mm}g = await tf.guidelines()\hspace{3mm}{\rmfamily\color{greyD}\# g["ok"], g["sector"], g["turnover"]}
+\end{minipage}}{\code{targets} maps tickers to target weights in percent and describes the whole portfolio: a held stock left out of it gets target 0 and is sold. \code{plan()} returns the orders \code{rebalance()} would send, sells first. \code{buy()} and \code{sell()} return the order ID found in the feed, since \code{AddOrder} returns none (Section~4). \code{rebalance()} sends nothing if its orders exceed what is left of the daily cap.}{DART Quant Team}
+
+\lead{Entering the \code{async with} block runs five steps before the strategy gets control.} First, the client renews the access token from the cookies stored in \code{session.json} and logs in only if that renewal fails (D17). Second, it chooses the portfolio by the rule of Section~2.3. Third, it starts the live feed as a background task and waits up to 30\,s for the first snapshot, so \code{weights()} never reads an empty state; if the feed task later stops, every call that reads the state or places an order raises instead of using stale weights. Fourth, it loads \code{Universe} once to learn each stock's sector (Section~5.3). Fifth, it counts the day's orders in \code{Portfolio/Orders}, new orders plus stops, and seeds the daily cap with the larger of that number and its own count file, so a restart during the day does not reset the count to zero. Leaving the block cancels the feed task and closes the WebSocket and the HTTP client without calling \code{Logout} (D16).
+
+\Needspace{3\baselineskip}\lead{Each module was tested against the live server, and the functions that need no server were tested offline (\figref{24}).}
+
+\figblock[wide]{24}{Every test passed after the two defects the tests exposed were fixed}[Wrapper tests against contest.timefolio.net, 09:27 to 09:55 KST on 24 Nov 2026, portfolio 27032]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{22mm} >{\RaggedRight\arraybackslash}p{52mm} >{\RaggedRight\arraybackslash}X}
+\thd{Test} & \thd{What was checked} & \thd{Result}\\
+\code{transport} & Cost of the first request, of a second client's first request and of a reused connection; clock offset from the \code{Date} header & First request of a fresh process 1.2 to 1.3\,s; a second client's first request 130\ms; reused 31 to 39\ms. Server clock minus PC clock $-2.98$\,s, matching the 3\,s of Section~2.2\\\rowsep
+\code{auth} & Login, cookie storage and renewal across two runs & First run logged in and saved the cookies to \code{~/.config/pytimefolio/session.json} with mode 0600; second run renewed the token without logging in\\\rowsep
+\code{rest} & Portfolio rule; concurrent reads on one connection; ticker check & Portfolio 27032 selected by the rule. \code{Session}, \code{Universe} (2,648), \code{Trades} (64) and \code{Orders} (5 that morning) fetched concurrently on one HTTP/2 connection. \code{ValidateProduct} for A005930 returned no warnings\\\rowsep
+\code{hub}, \code{state} & One connection polled at 3\,s; delta merge & 1 snapshot, then 20 deltas without a drop. Merged state equalled same-\code{t} snapshots in 15 of 15 rounds (the test of Section~2.4)\\\rowsep
+\code{orders}, buy & Samsung Electronics 0.1\%, limit KRW~150,700, 20\% below the market price of 188,400 & Found in the feed 1 to 3\,s after \code{AddOrder}: Id 1650412, \code{Working}, \code{qty2ord} 4. Stopped after 3\,s; \code{wait()} returned stopped, 0 of 4\\\rowsep
+\code{orders}, sell & LIG Nex1 0.1\%, limit KRW~427,000, 20\% above the market price of 355,500 & Order record \code{ls} = L, \code{ex} = X, \code{sgn} = $-1$, \code{qty2ord} 2. Stopped; result stopped, 0 of 2\\\rowsep
+\hl\code{plan()}, total & Samsung Electronics 50\% against its \code{weiLimit} of 40\% & Capped at 40\%; water-filling spread the excess over the other 22 holdings. The targets summed to 139\%, which \code{plan()} accepted: defect 1, fixed with \code{max_total}\\\rowsep
+\code{plan()}, one share (5.2) & Three small orders with \code{min_wei} 0.01, 09:52 & SK hynix +0.03\% dropped with a warning (one share 0.1413\%); Samsung Electronics +0.1\% and Leeno Industrial +0.06\% kept\\\rowsep
+\hl\code{guidelines()} (5.3) & Feed fields and the \code{Violations} reply, 09:52 & Sector limits keyed by the \code{msecs} record \code{Id} put IT over its limit while the server counted 0 violations: defect 2, fixed by keying on \code{sec}. Then 0 server violations; \code{ok} False on turnover 4.8\%\\\rowsep
+\code{plan()}, sector (5.3) & Three target sets, 09:55 & Unchanged weights: 0 orders. Industrials +6 pp: rejected. Industrials +3 pp: 2 orders (\figref{29})\\\rowsep
+Offline & 9 unit tests: state merge with string keys converted to \code{int}, unchanged fields kept, null reply, added and removed records, snapshot replacement; water-filling; target-to-order conversion; order body against the request captured at 09:18; \code{sector_violations}; KRX tick sizes & All 9 pass\\
+\end{tabularx}}}{Market prices are those of the feed at the time of the order. Both test orders had limits 20\% from the market so that they could not fill. Highlighted rows are the two defects. The tests of 5.2 and 5.3 called \code{plan()} and \code{guidelines()} only and sent no orders.}{DART Quant Team}
+
+\lead{The sell test settles how a sell is sent.} The wrapper's \code{sell()} sends the same \code{AddOrder} body as a buy with the exit code \code{ex} = X in place of E, and \code{ls} stays L. The server accepted it and recorded \code{sgn} = $-1$ with \code{qty2ord} 2, so a sell is an exit from a long position on the same side code. Section~4's orders were all buys; with this test both sides have been placed, found in the feed and stopped.
+
+\lead{The first \code{plan()} test found that a target set summing above 100\% passed through.} Water-filling moves the weight cut at a limit onto the other stocks and keeps the total unchanged, so a 139\% target stayed 139\% after capping and \code{plan()} would have asked for a portfolio worth 139\% of its value. \code{plan()} now raises \code{ValueError} before capping when the targets sum above \code{max_total}, 100\% by default (D19).
+
+\lead{After these tests the day's count stood at 7 new orders and 5 stops, which leaves 68 of the wrapper's 80.} Section~4's tests used 5 orders and 3 stops; the buy and the sell added 2 of each, and the tests of 5.2 and 5.3 sent none. Until the organiser answers Q2 (\figref{22}), the wrapper counts a stop as an order, so 12 count against its cap of 80, and the organiser's threshold of 100 is 88 away.
+\verdict{the wrapper's \code{plan()} rejects targets that sum above 100\%. \code{sell()} sends \code{ls} = L with \code{ex} = X, as verified live. At start the wrapper renews before it ever logs in, waits for the first snapshot, loads the universe, and seeds its daily cap from the day's new orders plus stops in \code{Portfolio/Orders}.}
+
+% =====================================================================================================
+% 5.2 ONE SHARE
+% =====================================================================================================
+\seclabel
+\claim{5.2\quad An order smaller than one share rounds to zero, so plan() drops it, measuring one share against the net assets the feed reports}
+
+\lead{The server rounds \code{qty2ord} down, so an order smaller than one share's weight becomes 0 shares (\figref{25}).} One Samsung Electronics share was about 0.0226\% of the portfolio's value, so a 0.1\% order is worth 4.4 shares and the server asked for 4. One LIG Nex1 share was about 0.043\%, so 0.1\% is worth 2.3 shares and the server asked for 2.
+
+\figblock{25}{qty2ord is the order's worth in shares, rounded down}[Order size against the weight of one share]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X R{20mm} R{9mm} R{16mm} R{13mm}}
+\thd{Order} & \thd{One share (\% of value)} & \thd{\code{wei}} & \thd{Worth in shares} & \thd{\code{qty2ord}}\\
+Samsung Electronics, buy (5.1) & 0.0226 & 0.1 & 4.4 & 4\\\rowsep
+Samsung Electronics, buy at 09:15 (4) & 0.0226 & 0.3 & 13.3 & 13\\\rowsep
+LIG Nex1, sell (5.1) & 0.043 & 0.1 & 2.3 & 2\\
+\end{tabularx}}}{One share's weight = price $\times$ 100 / net assets, at the feed's price. The 09:15 row uses the share weight of the later test; 13 shares fits any share weight from 0.0214 to 0.0231.}{DART Quant Team}
+
+An order for 0.02\% of Samsung Electronics would therefore be accepted with HTTP 200 and ask for 0 shares, using one of the day's orders for nothing. \code{plan()} drops such orders before anything is sent.
+
+\lead{One share's weight is the price times 100 divided by the net assets, and the feed reports the net assets directly.} The balance record \code{bs} carries \code{na}, the net assets in KRW: 837,002,427 at 09:52. Whether that is the figure the server divides by can be checked against the positions: each holding gives an estimate \code{pos} $\times$ \code{close} $\times$ 100 / \code{wei}, and the median over the 23 holdings was 836,798,658, 0.02\% below \code{na}. The estimate is the noisier of the two because \code{wei} has two decimals: for LIG Nex1 at 0.43\%, a rounding of 0.005 moves its estimate by 1.2\%. \code{nav()} therefore returns \code{bs.na} and falls back to the median estimate only when the feed lacks \code{na} (D24). At 09:52 one share weighed 0.0226\% for Samsung Electronics, 0.0426\% for LIG Nex1 and 0.1413\% for SK hynix.
+
+\lead{For a stock the portfolio holds, the price is the feed's \code{close}; for any other stock the caller has to pass one.} The contest server reports no price for a stock outside the portfolio, and market data stays outside the wrapper (N1), so \code{plan()} takes \code{prices=}, a dictionary from ticker to price. Without a price it keeps the order and logs a warning that it could not check it, since dropping an order the wrapper cannot measure would change the strategy's targets on no evidence. Dropped orders are logged one by one and kept in \code{tf.dropped}, so the caller can see what was left out (D22).
+
+\lead{At 09:52 the filter dropped the one order below its share's weight and kept the two above.} The targets were the current weights plus 0.03 percentage points of SK hynix, 0.1 of Samsung Electronics and 0.06 of Leeno Industrial, with \code{min_wei} lowered from its default of 0.05 to 0.01 so that the 0.03 order reached the filter instead of being skipped as too small. SK hynix +0.03\% was dropped with a warning, since one share was 0.1413\%; Samsung Electronics +0.1\% (one share 0.0226\%) and Leeno Industrial +0.06\% were kept.
+
+The filter adds no margin. An order a few percent above one share's weight can still round to 0 if the price rises between \code{plan()} and the moment the server computes \code{qty2ord}; on the 09:15 order of \figref{25}, the share weight the server used lay between 0.0214\% and 0.0231\%, a range of 8\%.
+\verdict{the wrapper's \code{plan()} computes one share's weight as price $\times$ 100 / \code{bs.na}, with the price from the feed for a held stock and from \code{prices=} for any other, drops orders below it with a warning and keeps them in \code{tf.dropped}; an order it cannot price is kept with a warning.}
+
+% =====================================================================================================
+% 5.3 GUIDELINES
+% =====================================================================================================
+\seclabel
+\claim{5.3\quad The feed and the Violations reply give every guideline, and plan() rejects targets that break a sector limit}
+
+\lead{The contest sets four investment guidelines, and only the stock limit is enforced when an order is placed (\figref{26}).} The contest page gives the limits. The server blocks an order that would take a stock past its \code{weiLimit}; the sector and small-cap limits are counted as violations in the \code{Violations} reply, and turnover in the feed's \code{cmpl} record. Weekly turnover has to reach 5\% every week; up to 3 weekly violations are allowed, and 4 or more exclude the portfolio from the ranking and the prizes.
+
+\figblock[wide]{26}{Four guidelines: the server blocks orders only on the stock limit and counts the other three}[Contest guidelines, where the wrapper reads each value, and their state at 09:52 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{19mm} >{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}p{28mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{42mm}}
+\thd{Guideline} & \thd{Limit} & \thd{Read from} & \thd{At 09:52} & \thd{Wrapper}\\
+Stock weight & Up to \code{weiLimit}: Samsung Electronics 40\%, others 15\%; the server blocks the order & \code{pos}: \code{wei}, \code{weiLimit} & \code{StkViolCnt} 0 & \code{plan()} caps targets by water-filling; a buy past the limit is refused before sending\\\rowsep
+Sector weight & Up to max(2 $\times$ market sector weight, 10\%) & \code{pos}: \code{sec}, \code{wei}; \code{msecs} & \code{SectViolCnt} 0; least headroom 2.01 pp (\figref{28}) & \code{plan()} rejects the targets\\\rowsep
+Small caps & Stocks under KRW 1 trillion market cap, up to 30\% in total & \code{tags}; \code{SmallCapViol} & 3.35\%, one stock (A090460) & Reported by \code{guidelines()}\\\rowsep
+Weekly turnover & At least 5\% every week; 4 or more weekly violations exclude & \code{cmpl}: \code{currWto}, \code{wtoViols} & 4.8\% this week; \code{wtoViols} 1 & Reported by \code{guidelines()}\\
+\end{tabularx}}}{Limits from the guideline page of the contest site; values from the feed and \code{Portfolio/Violations}. pp = percentage points.}{contest.timefolio.net, DART Quant Team}
+
+\lead{The values behind the guidelines sit in feed fields that Section~2.4 did not need (\figref{27}).} Besides \code{bs}, \code{pos}, \code{ords} and \code{msecs}, a snapshot carries five top-level fields: \code{bm}, \code{bs_updated}, \code{cmpl}, \code{noPosPrcs} and \code{tags}. The \code{state} module keeps them as they arrive and lets a delta overwrite any of them that is not null. The \code{Violations} reply adds the server's own counts; it has no turnover field, so turnover comes only from \code{cmpl}.
+
+\figblock[wide]{27}{Turnover, small-cap labels, market sector weights and net assets come from the feed; violation counts from the server}[Fields read by \code{guidelines()} and \code{plan()}, with values at 09:52 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{24mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{62mm}}
+\thd{Field} & \thd{Content} & \thd{At 09:52}\\
+\code{cmpl} (feed) & \code{asr}, \code{currWto} (this week's turnover, \%), \code{avgWto}, \code{wtoViols}, \code{expWtoViols} & \code{currWto} 4.8, \code{avgWto} 28.0, \code{wtoViols} 1, \code{expWtoViols} 1\\\rowsep
+\code{tags} (feed) & Labels by ticker & \texttt{\{"A090460": ["SmallCap"]\}}\\\rowsep
+\code{msecs} (feed) & One record per GICS sector: record \code{Id}, sector code \code{sec}, market weight \code{wei} (\%) & e.g.\ \texttt{\{"Id": 1, "sec": "10", "wei": 0.92\}}\\\rowsep
+\code{bs} (feed) & \code{na} (net assets, KRW), \code{nav} (index), \code{rank}, \code{nPeers}, \code{buyAmt}, \code{sellAmt}, violation counters & \code{na} 837,002,427; \code{nav} 837.0\\\rowsep
+\code{Current} (\code{Violations}) & \code{StkViolCnt}, \code{StkViolExc}, \code{SmcapViolExc}, \code{SectViolCnt}, \code{SectViolExc}, \code{TotalViolCnt}, \code{TotalViolExc} & All 0\\\rowsep
+\code{Cumulative} (\code{Violations}) & The same counts and \code{ViolDays} & All 0\\\rowsep
+\code{Details} (\code{Violations}) & \code{StockViols}, \code{SmallCapViol} (\code{TotalWei}, \code{Limit}, \code{Excess}, \code{Stocks}), \code{SectorViols} & \code{SmallCapViol}: \code{TotalWei} 3.35, \code{Limit} 30, \code{Excess} 0\\
+\end{tabularx}}}{\code{bm}, \code{bs_updated}, \code{noPosPrcs} and \code{asr} are kept but not interpreted; the meaning of \code{expWtoViols} has not been confirmed.}{contest.timefolio.net live feed and \code{Portfolio/Violations}, DART Quant Team}
+
+\Needspace{4\baselineskip}\lead{\code{guidelines()} combines both sources into one reply.} It lists the five stocks with the least headroom under \code{weiLimit}, the weight, limit and headroom of every sector held (\figref{28}), the small-cap total, the turnover values of \code{cmpl} and the server's \code{Violations} reply unchanged. Its \code{ok} is True only if the server counts 0 current violations and this week's turnover is at least 5\%. At 09:52 \code{ok} was False on a turnover of 4.8\%, with 0 server violations.
+
+\figblock{28}{Consumer Discretionary was nearest its limit, 2.01 pp away; IT, the largest sector, had 60.06 pp to spare}[Sector weights against their limits, largest first; 09:52 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X R{16mm} R{14mm} R{14mm} R{14mm}}
+\thd{GICS sector} & \thd{Market weight} & \thd{Portfolio} & \thd{Limit} & \thd{Headroom}\\
+45 Information Technology & 52.90 & 45.74 & 105.80 & 60.06\\\rowsep
+20 Industrials & 17.70 & 30.17 & 35.40 & 5.23\\\rowsep
+\hl 25 Consumer Discretionary & 5.75 & 9.49 & 11.50 & 2.01\\\rowsep
+50 Communication Services & 5.00 or less & 6.79 & 10.00 & 3.21\\\rowsep
+35 Health Care & 5.69 & 6.54 & 11.38 & 4.84\\
+\end{tabularx}}}{All values in percent. Limit = max(2 $\times$ market weight, 10). Market weights are derived from the limits; for Communication Services the 10\% floor applies, so its market weight is only bounded. The five sectors hold 98.73\% of the portfolio.}{\code{guidelines()} output, DART Quant Team}
+
+\lead{The first version of \code{guidelines()} put IT over its limit, and the server's count exposed the error.} It keyed the market sector weights by the \code{msecs} record \code{Id} instead of the sector code \code{sec}. Record \code{Id} 1 holds sector 10, so a lookup for sector 45 found no market weight, the limit fell to the 10\% floor and IT at 45.74\% appeared 35.74 pp over it, while the server's \code{SectViolCnt} read 0. Keyed by \code{sec}, the IT limit became 105.80\%. This was the second defect found by live testing; the first was the 139\% total of Section~5.1.
+
+\lead{\code{plan()} checks every target set against the contest rules before it creates any order.} In order, it raises \code{ValueError} when the targets sum above \code{max_total} (100\%), caps each held stock at its \code{weiLimit}, raises when a target names a stock outside the universe, and raises when a sector's total exceeds max(2 $\times$ market weight, 10\%), the check of \code{sector_violations()} in \code{orders} (D23). The sector of each stock comes from \code{Universe}, which the client loads once at start (2,648 stocks); the market weights come from \code{msecs} at each call. The server blocks a stock order outright but reports sector breaches only as counts after the weights have moved, so the wrapper checks sectors itself. It rejects instead of spreading the excess, as water-filling does for a stock: spreading a sector's excess would lower every stock in that sector and raise all the others, and each changed stock costs one of the 80 daily orders. The error names the sector, its total and its limit, so the caller can adjust.
+
+\figblock{29}{plan() rejected the target set that took Industrials past its limit and accepted the one that stayed under it}[Industrials (GICS 20) moved by changing HD Hyundai Heavy Industries against Samsung Electronics; 09:55 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{36mm} R{17mm} R{11mm} >{\RaggedRight\arraybackslash}X}
+\thd{Target change} & \thd{Industrials} & \thd{Limit} & \thd{\code{plan()} result}\\
+None (current weights) & 30.14 & 35.36 & 0 orders\\\rowsep
+\hl Industrials +6 pp, Samsung $-$6 pp & 36.14 & 35.36 & \code{ValueError}: \texttt{20 36.14\% > 35.36\%}; no orders\\\rowsep
+Industrials +3 pp, Samsung $-$3 pp & 33.14 & 35.36 & 2 orders: sell Samsung Electronics 3\%, then buy HD Hyundai Heavy Industries 3\%\\
+\end{tabularx}}}{Weights in percent. Samsung Electronics is in sector 45, whose limit is 105.80\%. Nothing was sent.}{DART Quant Team}
+
+The Industrials limit read 35.40\% at 09:52 and 35.36\% at 09:55, because the market weights in \code{msecs} change about every 12\,s (Section~2.4). A limit stored once would drift from the server's, which is why \code{plan()} reads it from the feed at each call. The orders of the accepted set came out sells first, so the sale provides the cash for the purchase.
+
+\Needspace{4\baselineskip}\lead{This week's turnover stood below the 5\% minimum at 09:52 on Tuesday.} \code{cmpl.currWto} read 4.8\% and \code{cmpl.wtoViols} read 1, against the 3 weekly violations the rules allow. The wrapper reports these numbers through \code{guidelines()} and its \code{ok} flag; what and when to trade is left to the strategy (N2).
+
+\lead{The small-cap rule is reported only, because the wrapper has no market capitalisation for a stock it does not hold.} \code{tags} labelled one stock, the small cap the portfolio holds, so a target naming a new small cap cannot be recognised from the feed, and market data stays outside the wrapper (N1). At 3.35\% against 30\%, the margin was 26.65 pp.
+\verdict{the wrapper's \code{plan()} rejects targets above 100\%, outside the universe or over a sector limit computed from the feed at each call, before any order exists. \code{guidelines()} reports the stock, sector, small-cap and turnover values from the feed together with the server's \code{Violations} reply, and its \code{ok} is True only with 0 current violations and at least 5\% turnover this week.}
+
+% =====================================================================================================
+% APPENDICES
+% =====================================================================================================
+\par\Needspace{60mm}\seclabel
+\claim{Appendix A\quad Glossary}
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}X}
+\thd{Term} & \thd{Meaning in this report}\\
+ALPN & TLS extension with which client and server agree on the HTTP version during the handshake\\\rowsep
+Bearer token & An access token sent as \code{Authorization: Bearer <token>}; whoever holds it is authenticated\\\rowsep
+Clock skew & The tolerance a server allows when comparing a token's times with its own clock; 300\,s here\\\rowsep
+\code{cnclT} & Time an order was stopped; null otherwise. A stopped order still ends in \code{Done}, so \code{cnclT} tells a stopped order from a filled one\\\rowsep
+\code{cmpl} & Feed record with this week's turnover (\code{currWto}) and the count of weekly turnover violations (\code{wtoViols})\\\rowsep
+\code{cumQty} & Shares of an order filled so far\\\rowsep
+\code{currBizDay} & The server's current business day, returned at login and renewal\\\rowsep
+Delta & A live-feed reply holding only what changed since the reference snapshot (\code{*_diff} fields)\\\rowsep
+GICS sector & Sector code of the Global Industry Classification Standard (e.g.\ 45 Information Technology), carried as \code{sec} in \code{Universe}, \code{pos} and \code{msecs}\\\rowsep
+JWT & JSON Web Token: a signed token whose claims (\code{exp}, \code{iat}, \ldots) can be read without the key\\
+\end{tabularx}}
+
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}X}
+\thd{Term} & \thd{Meaning in this report}\\
+Keep-alive & Keeping a TCP connection open between requests so later requests skip set-up\\\rowsep
+\code{lastT}, \code{t} & \code{t} is the server's stamp on a reply; \code{lastT} is the stamp the client echoes to ask for a delta\\\rowsep
+\code{msecs} & Market weight of each GICS sector in the feed, the base of the sector limit\\\rowsep
+\code{limitIdx} & Relative price of an order in ticks: $n$ on the opposite side, $-n$ on the order's own side ($n$ from 1 to 10)\\\rowsep
+\code{na} & Net assets of the portfolio in KRW, in the feed's \code{bs}; the denominator of one share's weight\\\rowsep
+Negotiate & SignalR's first HTTP request, which returns a connection token and the transports on offer\\\rowsep
+\code{pfId} & Portfolio ID; one account has one per contest entry and reset\\\rowsep
+Position record & One entry of \code{pos} in a snapshot, with 28 keys: \code{Id}, \code{avgPrc}, \code{bPrc}, \code{bQty}, \code{chPct}, \code{close}, \code{ctstNm}, \code{d}, \code{div}, \code{fee}, \code{pfId}, \code{pos}, \code{posYd}, \code{prcYd}, \code{prft}, \code{prftKrw}, \code{prodId}, \code{prodNm}, \code{rstr}, \code{sPrc}, \code{sQty}, \code{sec}, \code{tax}, \code{userNick}, \code{userNm}, \code{wei}, \code{weiLimit}, \code{yWei}\\\rowsep
+\code{qty2ord} & Number of shares an order asks for, computed by the server from its \code{wei}\\\rowsep
+RTT & Round-trip time: one message to the server and back\\\rowsep
+Small cap & A stock with a market capitalisation under KRW 1 trillion, labelled \code{SmallCap} in the feed's \code{tags}\\\rowsep
+SignalR & Microsoft's library for live messaging between ASP.NET servers and clients, here over WebSocket\\\rowsep
+Snapshot & A live-feed reply holding the full state (\code{bs}, \code{ords}, \code{pos}, \code{msecs} and five smaller top-level fields)\\\rowsep
+Turnover & Weekly trading as a percentage of the portfolio; the contest requires at least 5\% every week\\\rowsep
+\code{wei} & Weight in percent (9 means 9\%); on a position the current weight, on an order the size of the order\\\rowsep
+\code{weiLimit} & Upper limit of a stock's weight in percent: 40 for Samsung Electronics, 15 for the others\\
+\end{tabularx}}
+
+\clearpage\seclabel
+\claim{Appendix B\quad Decision log}
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{7mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{50mm} >{\RaggedRight\arraybackslash}p{38mm}}
+\thd{} & \thd{Decision} & \thd{Evidence} & \thd{Revisit if}\\
+D1 & One HTTP/2 client for the life of the process & 106.5\ms{} new against 16.0\ms{} reused (2.1) & Server drops HTTP/2\\\rowsep
+D2 & \code{keepalive_expiry} 10\,s & Server closes idle connections after 15 to 30\,s (2.1) & Reconnects appear in logs\\\rowsep
+D3 & Renew at 720\,s by the server's clock & 900\,s lifetime, 3\,s clock offset (2.2) & JWT lifetime changes\\\rowsep
+D4 & Send the whole cookie jar on renewal & \code{refreshToken} alone gave 401 (2.2) & \\\rowsep
+D5 & Log in when the cookie jar has less than one day left & Expiry fixed at 7 days, unchanged by renewal (2.2) & Renewal starts extending it\\\rowsep
+D6 & Dates from \code{currBizDay} only & Wrong dates return other days silently (2.3) & \\\rowsep
+D7 & Portfolio by contest, reset flag, end date & \code{active} false for all; duplicate names (2.3) & A new field marks the live one\\\rowsep
+D8 & One request in flight; echo \code{t} unread & Rule (a), \code{t} offset 32,400\,s; no push in the session (2.4) & Hub starts pushing\\\rowsep
+D9 & Renew before reconnecting, not on renewal & Open socket outlives token; new negotiate 401 (2.4) & Server closes sockets at expiry\\\rowsep
+D10 & Cap 80 orders a day, 1\,s between writes & Organiser's reply (1) & Organiser changes the limit\\\rowsep
+D11 & Never resend an order blindly & \code{AddOrder} reply has no ID (4) & Reply starts carrying an ID\\\rowsep
+D12 & Market data out of scope & Separate API and limits (3) & \\\rowsep
+D13 & Order \code{wei} = target $-$ current weight & \code{qty2ord} = 7 for \code{wei} 0.3 with 0.13\% held (4) & \\\rowsep
+D14 & Merge deltas by \code{int(Id)}, changed fields only & \code{updated} keyed by string \code{Id}, 2 to 4 of 28 keys; merged state equalled same-\code{t} snapshots in 15 of 15 rounds (2.4) & Merged state differs from a snapshot\\\rowsep
+D15 & Finished $=$ \code{Done}; stopped if \code{cnclT} set; partly filled if also 0~$<$~\code{cumQty}~$<$~\code{qty2ord} & Three stopped orders \code{Done} with \code{cnclT} and \code{cumQty} 0 of 4 (4) & Server adds a stopped state\\\rowsep
+D16 & No Logout on shutdown; jar outside the repository, mode 0600 & Logout revokes nothing; saved jar still renews (2.2) & Logout starts revoking tokens\\\rowsep
+D17 & Never log in while the stored session works; log in when renewal fails & Each login adds a 7-day session (2.2) & Sessions become revocable\\\rowsep
+D18 & \code{warm_up()} at start & First request of a fresh process 1.2 to 1.3\,s (2.1) & Start-up cost drops\\\rowsep
+D19 & \code{plan()} rejects targets that sum above 100\% & Water-filling keeps the total; a 139\% target passed (5.1) & \\\rowsep
+D20 & \code{plan()} drops orders below one share's weight & \code{qty2ord} rounded down: 0.1\% gave 4 and 2 shares (5.2) & Server starts rounding up\\\rowsep
+D21 & Sells sent as \code{ls} = L, \code{ex} = X & Live sell recorded with \code{sgn} = $-1$ (5.1) & Server rejects the form\\\rowsep
+D22 & Share price from the feed's \code{close} for a held stock, from \code{prices=} otherwise; an order without a price kept with a warning; dropped orders kept in \code{tf.dropped} & The feed has prices for holdings only; market data out of scope (N1); SK hynix +0.03\% dropped, two larger orders kept (5.2) & \\\rowsep
+D23 & \code{plan()} rejects targets outside \code{Universe} or over max(2 $\times$ market sector weight, 10\%) & Server counts sector breaches only afterwards; +6 pp Industrials rejected, +3 pp accepted (5.3) & Server starts blocking sector orders\\\rowsep
+D24 & Net assets from \code{bs.na}; median of \code{pos} $\times$ \code{close} $\times$ 100 / \code{wei} as fallback & 837,002,427 against 836,798,658, 0.02\% apart; \code{wei} has two decimals (5.2) & \code{na} disappears from \code{bs}\\\rowsep
+D25 & \code{guidelines()} from \code{cmpl}, \code{tags}, \code{msecs} keyed by \code{sec}, and \code{Violations}; \code{ok} needs 0 current violations and 5\% turnover & Keying by record \code{Id} put IT over its limit against a server count of 0 (5.3) & Feed fields renamed\\
+\end{tabularx}}
+
+\end{document}
