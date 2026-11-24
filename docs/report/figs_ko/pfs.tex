@@ -1,0 +1,11 @@
+% Korean edition of figs/pfs.tex.
+\fig{pfs}{운용 중인 포트폴리오는 초기화되지 않았고 종료일도 지나지 않았다}[로그인 응답 \code{pfs}의 항목 6개, 최신순. 포트폴리오 ID는 생략]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{34mm} >{\RaggedRight\arraybackslash}p{25mm} >{\RaggedRight\arraybackslash}p{13mm} >{\RaggedRight\arraybackslash}X}
+\thd{대회 (\code{ctstId})} & \thd{기간} & \thd{\code{invalid}} & \thd{웹 페이지 상태}\\
+\hl\textbf{13회차 (91)} & \textbf{10월 12일\textasciitilde 11월 30일} & \textbf{없음} & \textbf{운용 중}\\\rowsep
+13회차 (91) & 10월 1일\textasciitilde 10월 8일 & True & 종료, 초기화\\\rowsep
+12회차 (90) & 7월 3일\textasciitilde 8월 31일 & 없음 & 종료\\\rowsep
+12회차 (90) & 7월 1일\textasciitilde 7월 2일 & True & 종료, 초기화\\\rowsep
+11회차 (86) & 4월 1일\textasciitilde 5월 29일 & 없음 & 종료\\\rowsep
+연습 (1) & 2월 5일\textasciitilde 4월 30일 & True & 종료, 초기화\\
+\end{tabularx}}}{음영 행: 운용 중인 포트폴리오. \code{invalid}가 없고 기간이 11월 24일을 포함하는 유일한 항목이다. \code{invalid}는 초기화된 포트폴리오에만 나타난다. \code{active}는 운용 중인 것을 포함해 6개 모두 False이므로, 래퍼는 대회(\code{ctstId}), \code{invalid} 없음, 아직 지나지 않은 종료일(\code{lastD})로 고르며 정확히 1개가 맞아야 한다.}{DART Quant Team}

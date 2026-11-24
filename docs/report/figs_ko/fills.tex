@@ -1,0 +1,27 @@
+% Korean edition of figs/fills.tex.
+\fig{fills}{7주가 약 2분마다 1\textasciitilde 2주씩 체결되어 09:08:07에 끝났다}[주문 1649882(LIG넥스원, \code{wei} 0.3)의 체결 주식 수(\code{cumQty}), 2026년 11월 24일 실시간 피드에서 읽음]{%
+\begin{tikzpicture}[x=0.15mm,y=4.6mm,font=\fontsize{7}{8.4}\selectfont]
+% x: seconds after 09:00 (0.15 mm per s); y: shares filled
+\fill[navyXL] (0,0) rectangle (600,7.6);
+% grid and axes
+\foreach \y in {1,...,7} \draw[greyM,line width=0.2pt] (-60,\y) -- (660,\y);
+\draw[greyD,line width=0.4pt] (-60,0) -- (660,0);
+\draw[greyD,line width=0.4pt] (-60,0) -- (-60,7.6);
+\foreach \y in {0,...,7} \node[anchor=east,text=greyD] at (-60,\y) {\y};
+\foreach \m/\l in {0/09:00,120/09:02,240/09:04,360/09:06,480/09:08,600/09:10}
+  {\draw[greyD] (\m,0) -- (\m,-0.18); \node[anchor=north,text=greyD] at (\m,-0.2) {\l};}
+\node[anchor=north,text=greyD] at (300,-1.05) {시각 (KST)};
+\node[rotate=90,anchor=south,text=greyD] at (-128,3.5) {7주 중 체결 주식 수};
+\node[text=navy,align=center,fill=navyXL,inner sep=1pt] at (470,1.5) {주문 시간대\\09:00\textasciitilde 09:10};
+% step line
+\draw[navy,line width=1pt] (-60,0) -- (30,0) -- (30,1) -- (129,1) -- (129,3) -- (250,3) -- (250,4) -- (370,4) -- (370,6) -- (487,6) -- (487,7) -- (660,7);
+% fill times
+\foreach \t/\n/\l in {30/1/09:00:30,129/3/09:02:09,250/4/09:04:10,370/6/09:06:10}
+  {\fill[navy] (\t,\n) circle (0.75mm); \node[anchor=south east,text=navy,inner sep=1.5pt] at (\t,\n) {\l};}
+\fill[navy] (487,7) circle (0.75mm);
+\node[anchor=north west,text=navy,inner sep=2pt,font=\fontsize{7}{8.4}\selectfont\bfseries] at (487,7) {09:08:07 \code{Done}};
+% position weight after each fill
+\node[anchor=east,text=greyD] at (-60,8.35) {포지션 비중(\%)};
+\foreach \t/\w in {30/0.17,129/0.26,250/0.30,370/0.38,487/0.43}
+  {\node[text=greyD] at (\t,8.35) {\w};}
+\end{tikzpicture}}{점은 실시간 피드에서 읽은 체결 시각이다. 피드는 3\,s마다 폴링했으므로 각 시각은 $\pm$3\,s 정확도다. 음영은 주문 시간대(\code{hm0} 09:00\textasciitilde\code{hm1} 09:10)다. 주문은 08:33부터 \code{Working}이었고 마지막 주식이 체결되며 \code{Done}으로 바뀌었다. 첫 체결 후 7분 37초다. 맨 위 줄은 체결 후 포지션 비중(순자산 대비 \%)이며, 주문 전에 보유하던 3주를 포함한다. 평균 체결가 352,714.29원.}{실시간 피드 모니터 로그, DART Quant Team}

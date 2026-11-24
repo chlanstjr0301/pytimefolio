@@ -1,0 +1,20 @@
+% Korean edition of figs/orderapi.tex.
+\fig[wide]{orderapi}{\code{AddOrder}, \code{CancelOrderBatch}, \code{Orders}는 실제로 캡처했고, 클라이언트 코드에서만 본 경로 3개는 시험하지 않았다}[\code{/api/Portfolio} 아래 경로(위)와 주문 본문의 가격·시간 필드(아래), 2026년 11월 24일 09:16\textasciitilde 09:22 KST 캡처]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{26mm} >{\RaggedRight\arraybackslash}p{9mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{40mm} >{\RaggedRight\arraybackslash}p{27mm}}
+\thd{경로} & \thd{메서드} & \thd{매개변수 또는 본문} & \thd{응답} & \thd{출처}\\
+\hl\code{AddOrder} & POST & \code{d}, \code{pfId}, \code{prodId}, \code{ls}, \code{ex}, \code{wei}, \code{exitAll}, \code{limitPrc}, \code{limitIdx}, \code{stopPrc}, \code{hm0}, \code{hm1} & 200, \texttt{\{"data":"","warnings":[]\}}. 주문 ID 없음 & 실제(매도 형식: \ref{sec:wrappertests}절)\\\rowsep
+\hl\code{CancelOrderBatch} & POST & \code{d}, \code{pfId}, \code{ords}: 주문 ID를 쉼표로 이은 문자열 하나(예: \code{"1650197"}) & 200, 빈 본문. 페이지는 ‘정지’라고 표시 & 실제\\\rowsep
+\hl\code{Orders} & GET & \code{d0}, \code{d1}, \code{pfId} & 200, 범위 안 모든 주문(\code{Done} 포함) & 실제\\\rowsep
+\code{ValidateProduct} & GET & \code{d}, \code{prodId}, \code{entry=true} & 200, \texttt{\{"data":"","warnings":[]\}} & 실제\\\rowsep
+\code{Session} & GET & \code{d}, \code{pfId}. 주문 대화상자가 열릴 때 호출 & 200, 시간대 09:00\textasciitilde 15:20 & 실제\\\rowsep
+\code{CancelOrder} & POST & \code{d}, \code{pfId}, \code{ordId} & 관찰 못함 & 클라이언트 코드, 미시험\\\rowsep
+\code{ModifyOrder} & POST & \code{d}, \code{ordId}, \code{wei}, \code{exitAll}, \code{limitPrc}, \code{limitIdx}, \code{stopPrc}, \code{hm0}, \code{hm1}. \code{pfId} 없음 & 관찰 못함 & 클라이언트 코드, 미시험\\\rowsep
+\code{DeleteOrder} & POST & \code{d}, \code{pfId}, \code{ordId}. 미접수 주문에 제공 & 관찰 못함 & 클라이언트 코드, 미시험\\
+\end{tabularx}}\par\vspace{5pt}
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{26mm} >{\RaggedRight\arraybackslash}p{52mm} >{\RaggedRight\arraybackslash}X}
+\thd{필드} & \thd{값} & \thd{뜻}\\
+\code{limitPrc} & 가격, \code{limitIdx} = null & 고정 가격 지정가 주문\\\rowsep
+\code{limitIdx} & $n$ 또는 $-n$, $n$은 1\textasciitilde 10 & 상대 호가 쪽 $n$틱($n$) 또는 주문 자신의 호가 쪽($-n$)\\\rowsep
+\code{stopPrc} & 가격 & 스톱 주문\\\rowsep
+\code{hm0}, \code{hm1} & 현재 시각과 null, 또는 시작·종료 시각 & 즉시, 또는 \code{hm0}부터 \code{hm1}까지 시간대에 체결 분산\\
+\end{tabularx}}}{강조 행: 래퍼가 주문을 넣고, 정지하고, 조회하는 데 쓰는 경로 3개. 래퍼는 주문마다 \code{ValidateProduct}를, 거래 시간대를 위해 \code{Session}을 호출하기도 한다. 위 표 아래쪽 경로 3개는 JavaScript 번들에만 나오며 래퍼는 호출하지 않는다. ‘실제’는 페이지에서 요청과 응답을 기록했다는 뜻이고, ‘클라이언트 코드’는 JavaScript 번들에서 본문을 읽었다는 뜻이다. 래퍼의 주문 호출은 \code{limitPrc}, \code{limitIdx}, \code{stopPrc} 중 정확히 하나를 받는다(\ref{sec:wrappertests}절).}{웹 클라이언트 코드, DART Quant Team}

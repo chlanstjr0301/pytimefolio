@@ -1,0 +1,13 @@
+% Korean edition of figs/modules.tex.
+\fig[wide]{modules}{모듈 8개: 프로토콜 계층마다 하나씩, 그리고 피드 상태, 클라이언트 클래스, 예외}[\code{pytimefolio}의 모듈 구성, import 순서]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{18mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{24mm}}
+\thd{모듈} & \thd{역할} & \thd{근거}\\
+\code{errors} & \code{TimefolioError}와 하위 클래스: \code{AuthError}(401), \code{RequestError}(400), \code{ServerError}(5xx나 끊긴 연결, 요청이 나갔는지 표시하는 플래그 포함), \code{BlockedError}(403이나 429), \code{StaleFeed}, \code{RebalanceError}(이미 넣은 ID 포함), \code{AmbiguousState} & \ref{sec:design}\\\rowsep
+\code{transport} & 모든 REST 요청에 재사용하는 \code{httpx.AsyncClient(http2=True)} 하나. \code{warm_up()}. 응답 \code{Date} 헤더로 구한 서버 시계 오차. 상태 코드를 예외로 바꾸며, 어떤 요청에서든 처음 받은 403이나 429를 기록. GET은 연결이나 읽기/쓰기 실패 뒤 한 번 반복(타임아웃 뒤는 아님), POST는 절대 반복 안 함 & \ref{sec:transport}, \ref{sec:auth}\\\rowsep
+\code{auth} & 시작할 때 저장된 쿠키 묶음으로 갱신, 실패할 때만 로그인. 갱신 나이를 넘긴 첫 호출이나 401에서 지연 갱신, 잠금 아래 한 번에 하나씩, 안에서 재확인. 쿠키 묶음 만료가 가까우면 로그인. 쿠키 묶음은 원자적으로, 소유자만 읽을 수 있게 기록. 비밀번호는 호출자에게서 받고 저장 안 함. 모든 호출에 Bearer 헤더 & \ref{sec:auth}\\\rowsep
+\code{rest} & \code{currBizDay}와 KST 날짜 대조. 포트폴리오 규칙. \code{Session}, \code{Universe}, \code{Trades}, \code{Violations}, \code{Orders}(\code{d0}, \code{d1}), \code{ValidateProduct} & \ref{sec:queries}, \ref{sec:orders}\\\rowsep
+\code{state} & 스냅샷 교체. \code{int(Id)}를 키로 한 델타 병합(\code{bs_updated}를 \code{bs}에 포함). 널 응답. \code{prodId} 색인. 가이드라인용으로 그 밖의 최상위 필드(\code{cmpl}, \code{tags}) 보관 & \ref{sec:feed}, \ref{sec:guidelines}\\\rowsep
+\code{hub} & SignalR 협상, 토큰을 헤더에 실은 WebSocket, 핸드셰이크, 핑으로 연장되지 않는 20\,s 마감 하나를 가진 요청 하나, 핑에 퐁 응답. 마지막 응답 시각, 26\,s보다 오래되면 \code{StaleFeed}. 실패하면 지수 백오프와 full jitter로 재연결. 단 403이나 429면 피드 종료 & \ref{sec:feed}\\\rowsep
+\code{orders} & 크기를 한 번 맞춘 주문 본문. water-filling, 섹터 검사, 진행 중 주문을 뺀 목표-주문 변환. 하루 한도(영업일마다 건수 파일), 쓰기 간격, 403이나 429 뒤 중단을 가진 주문 관문. 사전 검사(신선한 피드, 영업일, \code{ValidateProduct}, \code{weiLimit}). 쓰기와 찾기 내내 잠금 하나. 이미 돌려준 ID 건너뛰기, 새 레코드가 둘 이상 맞으면 \code{AmbiguousState}. 피드에서, 다음으로 REST \code{Orders}에서 확인하며 서버가 받았을 수 있는 주문은 재전송 안 함. 끝난 주문을 빼고 \code{CancelOrderBatch}로 정지. \code{Done}일 때 결과 판정 & \ref{sec:orders}, \ref{sec:oneshare}, \ref{sec:guidelines}\\\rowsep
+\code{client} & 비동기 컨텍스트 매니저 \code{Timefolio}: 시작(세션, 포트폴리오, 피드 태스크, \code{Universe}, 오늘 주문 건수), 상태 보기, \code{buy}, \code{sell}, \code{stop}, \code{wait}, \code{nav()}, \code{share_weight()}, \code{plan()}, \code{rebalance()}, \code{guidelines()}, \code{orders_left()} & \ref{sec:design}, \ref{sec:live}\\
+\end{tabularx}}}{각 모듈은 자기보다 위에 있는 모듈만 가져온다. 그 밖의 수치 매개변수(간격, 타임아웃, 한도, 갱신 나이)는 부록~\ref{app:decisions}에 있다. water-filling: 목표가 종목의 \code{weiLimit}를 넘으면 초과분을 다른 목표들에 비중에 비례해 나누므로 합계는 변하지 않는다.}{DART Quant Team; 코드는 \code{src/pytimefolio}}

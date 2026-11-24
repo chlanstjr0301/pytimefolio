@@ -1,0 +1,11 @@
+% Korean edition of figs/goalstatus.tex.
+\fig[wide]{goalstatus}{테스트는 G2와 G5를 보여주며, G1과 G3는 일부만, G4는 측정하지 않았다}[\figref{goals}의 목표마다 관련된 \figref{tests}의 테스트, 2026년 11월 24일. G2의 두 부분은 따로 판단]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{34mm} >{\RaggedRight\arraybackslash}p{46mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{15mm}}
+\thd{목표} & \thd{테스트} & \thd{결과} & \thd{상태}\\
+\hl G1 사람 없이 대회 기간 내내 로그인 유지 & 프로세스 2개에 걸친 \code{auth} 실서버 테스트. 오프라인: 동시 \code{token()} 호출 5건, 401 재시도, 손상된 세션 파일, 재시작 뒤 쿠키 만료 & 두 번째 프로세스가 로그인 없이 저장된 쿠키 묶음으로 갱신. 오프라인에서 호출 5건이 \code{SilentRefresh} 1건, 만료가 재시작 뒤에도 유지. 한 프로세스 안에서 720\,s 뒤 갱신과 7일 쿠키 만료 전 로그인은 아직 실행해 보지 않음 & 일부 확인\\\rowsep
+G2(a) 병합: 병합 상태가 \code{t}가 같은 스냅샷과 같음 & \code{hub}, \code{state}, \code{live_fields} 실서버 테스트 & 병합한 \code{pos}와 \code{ords}가 \code{t}가 같은 스냅샷과 15회 중 15회 일치. 델타 20개 중 20개의 \code{bs_updated}가 \code{na}를 최신으로 유지. \code{bs}와 \code{msecs}는 필드 단위로 비교하지 않음 & 확인\\\rowsep
+G2(b) 신선도: 26\,s보다 오래된 상태로 읽기나 주문을 하지 않음 & 오프라인: 낡은 피드 테스트, 피드 신선도, 응답 마감을 늘리지 않는 핑 & 마지막 응답이 26\,s보다 오래된 피드는 \code{StaleFeed}를 던지고 주문과 \code{wait()}을 막음. 핑만 보내는 피드는 응답 마감 뒤 타임아웃. 실제 장애는 일으키지 않음 & 오프라인 확인\\\rowsep
+\hl G3 주최측 한도와 대회 가이드라인 안에서 주문을 넣고, 정지하고, 추적 & 오프라인: 하루 한도와 동기화, 쓰기 간격, 재전송 안 함, 재전송 실패, 같은 주문 2건, 403·429에서 중단. 실서버: 매수, 매도, \code{plan()}, 수정된 코드 & 한도를 넘는 쓰기 거부. 잃어버린 \code{AddOrder} 응답은 재전송 안 함. 동시 쓰기 3건이 모의 서버에 1.002\,s 간격으로 도달. 403이나 429 뒤 모든 쓰기 중단. 실제 주문을 넣고 1\textasciitilde 3\,s 만에 찾아 정지, 10:34까지 80건 중 16건 사용. 보이지 않은 것: 느린 서버에서 15\,s 안 확인(실제로 찾은 것은 매수뿐), 실행 중 한도(\code{plan()}은 계획 시점의 목표 비중만 검사) & 일부 확인\\\rowsep
+\hl G4 폴링이 주문을 늦추지 않음 & 없음 & 피드 폴링과 주문이 이벤트 루프 하나를 공유. 폴링이 진행 중일 때 주문의 지연은 측정하지 않음 & 미확인\\\rowsep
+G5 모호하면 추측하지 않고 멈춤 & \code{rest} 실서버(포트폴리오 규칙). 오프라인 응답 유실, 재전송 실패, 상태 코드 테스트. \code{plan()} 섹터·합계 테스트 & 규칙으로 포트폴리오 선택. 찾지 못한 주문은 재전송 없이 \code{AmbiguousState}. 400은 \code{RequestError}. \code{plan()}이 산업재 한도를 넘는 목표와, 결함 1 수정 뒤 100\% 초과 목표를 거부 & 확인\\
+\end{tabularx}}}{강조 행은 완전히 확인되지 않은 목표다. 확인: 나열한 테스트가 \figref{goals}의 성공 기준을 충족함. 오프라인 확인: 모의 서버에서 코드 동작을 보였지만 실서버에서는 관찰하지 않음. 일부 확인: 기준의 일부를 충족했고 나머지는 아직 실행해 보지 않음. 미확인: 목표를 측정한 테스트가 없음. 각 결과로 사용자가 무엇을 어떤 가정 아래 믿을 수 있는지는 \figref{guarantees}에 있다. 실서버 테스트는 계정 하나로 오전 한나절 동안 했다(\ref{sec:validity}절).}{DART Quant Team; \figref{tests}}

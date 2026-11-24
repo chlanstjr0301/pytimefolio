@@ -1,0 +1,11 @@
+% Korean edition of figs/security.tex.
+\fig[wide]{security}{쿠키 묶음은 래퍼가 저장하는 유일한 비밀이다}[\code{pytimefolio}를 거치는 비밀과 개인 정보, 그리고 각각을 다루는 방식]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}p{62mm} >{\RaggedRight\arraybackslash}X}
+\thd{항목} & \thd{허용하는 것 또는 담고 있는 것} & \thd{래퍼가 다루는 방식}\\
+\hl 쿠키 묶음 & 로그인 후 7일간 액세스 토큰을 갱신. \code{Logout} 뒤에도 계속 갱신됨. 비밀번호 변경 뒤 동작은 미시험 & 저장소 밖 \code{~/.config/pytimefolio/session.json}에 권한 0600으로 저장. 로그인과 갱신 때마다 원자적으로 기록\\\rowsep
+비밀번호 & 로그인하고 새 7일짜리 쿠키 묶음을 만듦 & 래퍼가 저장하지 않음. 호출자가 생성자에 넘김(예: 환경 변수에서)\\\rowsep
+액세스 토큰 & 900\,s 동안 모든 REST·피드 요청을 인증 & 메모리에만 두고 \code{Authorization} 헤더로만 보냄. URL과 로그에 남기지 않음\\\rowsep
+로그인 응답 & 개인 정보 필드(연락처) & 기록하지 않음\\\rowsep
+포지션 레코드 & 계정 소유자의 이름과 닉네임(\code{userNm}, \code{userNick}) & 기록하지 않음\\\rowsep
+저장소 & GitHub에 공개 & \code{.env}, \code{data/}, \code{logs/}는 \code{.gitignore}에 있음\\
+\end{tabularx}}}{음영: 디스크에 쓰는 유일한 비밀. 토큰과 쿠키의 유효기간은 \ref{sec:auth}절에서 가져왔다. 비밀번호 변경 테스트는 \ref{sec:validity}절의 미해결 질문에 있다.}{DART Quant Team; 코드는 \code{src/pytimefolio}}

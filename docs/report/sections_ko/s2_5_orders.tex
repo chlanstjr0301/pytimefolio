@@ -1,0 +1,28 @@
+% Korean edition of sections/s2_5_orders.tex.
+\seclabel
+\claim{\secnum{2.5}{sec:orders}\quad 주문은 REST로 넣고 피드에서 확인하며, 크기는 \code{wei}가 정한다}
+
+\lead{서버는 개장 전에 넣은 주문도 받는다.} 08:30:05에 웹 클라이언트 코드에서 가져온 본문으로 \code{AddOrder} 요청을 보냈다. 본문에는 날짜(\code{d}), 포트폴리오(\code{pfId}), 종목코드(\code{prodId} = \code{A079550}, LIG넥스원), 방향(\code{ls} = L), 진입/청산 코드(\code{ex} = E는 포지션을 열거나 늘림, X는 줄임, \ref{sec:wrappertests}절), 주문 크기 필드(\code{wei} = 0.3)가 들어 있다. 주문이 어떻게 거래될지는 두 묶음의 필드가 더 정한다. 가격 유형 필드는 고정 가격 지정가(\code{limitPrc}), 시장가에서 $n$호가 떨어진 지정가(\code{limitIdx}), 스톱 가격(\code{stopPrc}) 중 하나를 고른다. 이 보고서의 다른 곳에서 ‘정지’는 진행 중인 주문을 취소하는 것을 뜻하며, 웹 페이지가 \code{CancelOrderBatch}를 부르는 말이다. 스톱 가격과는 관계없다. 나머지 두 필드인 시간 필드 \code{hm0}, \code{hm1}은 주문을 즉시 보내거나 체결을 시간대에 나눠 분산한다. 이 주문은 09:00\textasciitilde 09:10이었다. 서버는 HTTP 200과 \texttt{\{"data":"","warnings":[]\}}로 답했다.
+
+\lead{응답에 주문 ID가 없으므로 래퍼는 실시간 피드에서 자기 주문을 찾는다.} 주문 직후의 피드 응답은 인자가 \code{null}이었고(\ref{sec:feed}절), 08:33까지 피드의 주문 목록(\code{ords})에 ID 1649882인 새 레코드가 생겼다. 래퍼는 쓰기 전에는 없었고 \code{place()}가 아직 돌려주지 않은 ID 가운데서 종목코드, 방향, 크기가 맞는 새 레코드를 찾으며, 쓰기와 검색 내내 잠금 하나를 잡는다. 덕분에 이 프로세스의 같은 주문 2건이 같은 ID에 묶이지 않는다. 첫 주문이 REST로만 확인된 경우에도 마찬가지다. 맞는 새 레코드가 둘 이상이면 \code{place()}는 하나를 고르지 않고 \code{AmbiguousState}를 던진다. 같은 순간 웹 페이지나 다른 프로세스에서 넣은 똑같은 주문 1건은 응답에 ID가 없으므로 구분할 수 없다. 그래서 래퍼는 실행 중에 계정당 주문 제출자가 하나라고 가정한다.
+
+\lead{응답을 잃으면 래퍼는 주문이 있는지 확신할 수 없으므로, 서버가 받았을 수 있는 주문은 다시 보내지 않는다(\figref{orderstates}).} 타임아웃, 5xx, 또는 요청이 나간 뒤 연결이 끊기면, 래퍼는 15\,s 동안 피드에서 주문을 찾고, 다음으로 REST \code{Portfolio/Orders}에서 쓰기 5\,s 전 이후에 생성된 레코드(시계 오차 여유)를 찾는다. 둘 다 없으면 \code{AmbiguousState}를 던지고 확인을 호출자에게 맡긴다. 다시 보내면 주문이 두 번 들어갈 수 있고, 추가 주문은 래퍼가 허용하는 하루 80건 중 1건을 쓴다. 래퍼가 \code{AddOrder}를 다시 보내는 경우는 두 가지뿐이다. 첫째, 연결이 아예 맺어지지 않았다면(\code{ConnectError}, \code{ConnectTimeout}, \code{PoolTimeout}) 요청이 서버에 닿았을 수 없으므로 한 번 더 보낸다. 그 재전송도 실패하면 같은 피드·REST 검색을 거치며 세 번째 전송은 없다. 둘째, 401을 받으면 토큰을 갱신하고 한 번 더 보낸다. ASP.NET은 주문 처리기가 실행되기 전에 요청을 거부하기 때문이다(\ref{sec:auth}절). 400은 절대 재시도하지 않으며, 어떤 요청에서든 403이나 429를 받으면 이후 모든 쓰기를 멈춘다(\ref{sec:design}장).
+
+\input{figs_ko/orderstates.tex}
+
+\lead{주문의 \code{wei}는 순자산(\code{na}) 대비 주문 크기(\%)다. 목표 비중으로 읽었다면 주식 수가 달랐을 것이다.} 주문 전 포트폴리오는 LIG넥스원 3주(순자산의 0.13\%)를 갖고 있었고, 1주는 약 0.042\%였다. \code{wei} = 0.3을 목표로 읽으면 약 4주를 더 사라는 뜻이고, 크기로 읽으면 7.1주어치다. 주문은 \code{qty2ord} = 7을 보고했으므로 래퍼는 목표를 주문으로 바꿀 때 목표 비중에서 현재 비중을 뺀다. 래퍼는 주문을 만들 때 \code{wei}를 0.01\% 단위로 한 번 반올림하고, 같은 값을 보내고 같은 값으로 대조한다. 서버는 주문 크기를 보낸 그대로 저장했다(0.04, 0.1, 0.3을 확인). 서버는 \code{qty2ord}를 정수 주식 수로 내림한다. 내림과 반올림을 구분하는 테스트는 \ref{sec:oneshare}절에 있다.
+
+\lead{주문은 개장 전 \code{Working} 상태였고, 약 2분마다 1\textasciitilde 2주씩 체결되어 7분 37초 동안 7주가 체결됐다(\figref{fills}).} 3\,s마다 폴링한 피드에서 체결 수량은 09:00:30에 1주, 09:02:09에 3주, 09:04:10에 4주, 09:06:10에 6주, 09:08:07에 7주였고, 이때 상태가 \code{Done}으로 바뀌었다. 주문 시간대가 끝나기 1분 53초 전이다. 포지션은 10주, 포트폴리오의 0.43\%가 됐다.
+
+\input{figs_ko/fills.tex}
+
+\lead{포지션 평균 단가에는 수수료 0.1\%가 들어 있다.} 주문 전 포지션은 평균 381,381원에 3주였고, 7주가 평균 352,714.29원에 체결됐다. 최종 평균 단가 361,561.2원은 (3\,×\,381,381 + 7\,×\,352,714.29\,×\,1.001)\,/\,10과 정확히 같으므로, \code{avgPrc}는 체결가에 수수료를 더한 값이다. 래퍼는 서버가 보고한 \code{avgPrc}로 손익을 계산하며 수수료를 다시 더하지 않는다.
+
+\lead{주문 넣기, 정지, 조회는 실시간으로 기록했고, 나머지 주문 경로 3개는 클라이언트 코드에서만 읽었다(\figref{orderapi}).} 09:16\textasciitilde 09:22에 손으로 주문을 넣고 정지하는 동안 브라우저 개발자 도구로 페이지 자체의 요청을 기록했고, 나머지 본문은 JavaScript 번들에서 읽었다. \code{AddOrder}, \code{CancelOrderBatch}, \code{ValidateProduct}, \code{Orders}는 실제로 관찰했다. \code{CancelOrder}, \code{ModifyOrder}, \code{DeleteOrder}는 관찰하지 못했다. 실제 주문 대화상자는 \code{CancelOrderBatch}로 주문을 정지하고, 페이지는 미접수·실패 주문 목록에 있는 주문에만 정정과 삭제를 보여주므로, 이 3개 경로의 본문은 테스트되지 않았다. 래퍼는 \code{CancelOrderBatch}로 주문을 정지하며, ID를 쉼표로 잇고 이미 \code{Done}인 주문은 뺀다. 테스트되지 않은 3개 경로는 실서버에서 시험할 때까지 쓰지 않는다. 따라서 정정은 정지 후 새 주문으로 하며, 하루 한도에서 2건으로 센다.
+
+\input{figs_ko/orderapi.tex}
+
+\lead{끝난 주문은 모두 \code{Done}이 되므로, 어떻게 끝났는지는 \code{cnclT}와 \code{cumQty}로 읽어야 한다.} 번들은 상태 5개를 정의한다. \code{Generated}, \code{Accepted}, \code{Working}, \code{Done}, \code{Deleted}다. 페이지는 \code{state}가 \code{Done}이거나 정지 시각 \code{cnclT}가 null이 아니면 정정과 정지를 막는다. 09:31의 \code{Orders} 조회에서 정지한 삼성전자 주문 3건은 모두 \code{Done}이었고, \code{cnclT}가 설정돼 있었으며 4주 중 0주가 체결됐다(\code{qty2ord} 4 중 \code{cumQty} 0). 체결된 주문 2건과 같은 상태다. 그래서 래퍼는 \code{cnclT}가 설정된 \code{Done} 주문을 정지로, 0~$<$~\code{cumQty}이면 일부 체결 후 정지로 읽고, \code{cnclT}가 null인 \code{Done} 주문을 체결로 읽는다. \code{cnclT}가 null이면서 \code{cumQty}~$<$~\code{qty2ord}인 \code{Done} 주문은 아직 관찰하지 못했다. 시간대 주문이 체결되지 않은 채 \code{hm1}에 이르면 이렇게 될 수 있다. \code{wait()}은 이를 체결로 보고하며, 질문 Q5(\ref{sec:validity}절)에 올려 두었다. 관찰한 상태 순서는 두 가지다. 오전 주문들은 \code{Working}에서 \code{Done}으로, 10:33의 주문 1650719(\ref{sec:oneshare}절의 내림 테스트)는 \code{Accepted}에서 \code{Done}으로 갔다. 후자는 주문 직후 \code{Accepted}를 보였고 즉시 정지했다. \code{Generated}와 \code{Deleted}는 관찰하지 못했다.
+
+\lead{이 절의 테스트에는 새 주문 5건과 정지 3건을 썼다.} 08:30 LIG넥스원 주문은 스크립트로 넣었고 체결됐다. 삼성전자 주문 2건은 손으로 넣었다. 09:13의 0.1\% 주문(\code{qty2ord} 4)은 정지했고, 09:15의 0.3\% 주문은 상대 호가 10틱 가격으로 넣어 13주 중 13주가 체결됐다. 요청을 기록하려고 체결되지 않도록 시장가보다 20\% 낮은 151,800원 지정가로 삼성전자 0.1\% 주문 2건(각 \code{qty2ord} 4)을 더 넣었다. 09:18(즉시)과 09:20(15:00\textasciitilde 15:20 시간대)에 넣었고 둘 다 1분 안에 정지했다. 그날 한도 대비 합계는 \ref{sec:wrappertests}절에서 센다.
+\verdict{래퍼는 \code{AddOrder}마다 피드의 \code{ords}에서, 다음으로 \code{Portfolio/Orders}에서 새 레코드를 찾아 확인하며, 둘 다 없으면 다시 보내지 않고 \code{AmbiguousState}를 던진다. 연결이 맺어지지 않은 요청은 한 번만, 401로 거부된 요청은 한 번만 다시 보낸다(D11, D36). 주문의 \code{wei}는 목표에서 현재 비중을 뺀 값으로 보낸다(D13). \code{Done}은 끝난 것으로 읽는다. \code{cnclT}가 null이면 체결, 설정돼 있으면 정지, 그리고 0~$<$~\code{cumQty}이면 일부 체결 후 정지다(D15).}

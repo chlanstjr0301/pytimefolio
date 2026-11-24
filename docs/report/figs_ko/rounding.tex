@@ -1,0 +1,10 @@
+% Korean edition of figs/rounding.tex.
+\fig{rounding}{\code{qty2ord}는 주문 금액을 주식 수로 바꿔 내림한 값이다}[서버가 요구한 주식 수와 반올림 규칙별 예측, 2026년 11월 24일]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X R{15mm} R{9mm} R{12mm} R{12mm} R{14mm} R{12mm}}
+\thd{주문} & \thd{1주 (\%)} & \thd{\code{wei} (\%)} & \thd{주식 수 환산} & \thd{내림} & \thd{반올림} & \thd{\code{qty2ord}}\\
+LIG넥스원, 08:30 매수(\ref{sec:orders}) & 0.0423 & 0.3 & 7.1 & 7 & 7 & 7\\\rowsep
+삼성전자, 09:15 매수(\ref{sec:orders}) & 0.0226 & 0.3 & 13.3 & 13 & 13 & 13\\\rowsep
+삼성전자, 매수(\ref{sec:wrappertests}) & 0.0226 & 0.1 & 4.4 & 4 & 4 & 4\\\rowsep
+LIG넥스원, 매도(\ref{sec:wrappertests}) & 0.0426 & 0.1 & 2.3 & 2 & 2 & 2\\\rowsep
+\hl 삼성전자, 10:26과 10:33 매수, \code{live_rounding}(\ref{sec:oneshare}) & 0.0227 & 0.04 & 1.76 & 1 & 2 & 1\\
+\end{tabularx}}}{1주 비중 = 가격 $\times$ 100 / 순자산(\code{bs.na}), 피드 가격 기준, 순자산 대비 \%: 09:52에 0.0226과 0.0426, 10:33에 0.0227. 08:30의 1주 비중은 \ref{sec:orders}절의 7.1주어치에서 구한 0.3 / 7.1이다. 처음 4행은 두 규칙 모두에 맞으므로 둘을 구분할 수 없다. 강조 행이 둘을 구분한다. 1.76주어치는 내림하면 1, 반올림하면 2인데, 서버는 두 주문 모두 1을 요구했다(Id 1650693과 1650719, 즉시 정지, 0주 체결). 09:15 행은 09:52의 1주 비중을 쓴다. 13주는 1주 비중이 0.0214\textasciitilde 0.0231 사이면 모두 맞는다.}{DART Quant Team; \code{tests/live/live_rounding.py}}

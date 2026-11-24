@@ -1,0 +1,21 @@
+% Korean edition of figs/client.tex.
+\def\fclL#1#2{\hspace*{#1mm}\code{#2}}% one code line, indented #1 mm
+\def\fclC#1{\leavevmode{\rmfamily\color{greyD}#1}}% comment beside a code line
+\fig[wide]{client}{클래스 하나가 전략에 상태, 주문, 가이드라인 현황을 준다}[\code{Timefolio} 클라이언트 0.1.0 사용법, 오른쪽은 설명]{%
+{\fontsize{7.6}{9.6}\selectfont\begin{tabular}{@{}>{\RaggedRight\arraybackslash}p{106mm} >{\RaggedRight\arraybackslash}p{70mm}@{}}
+\fclL{0}{async with Timefolio(91, email=os.environ["EMAIL"],} & \fclC{대회 91. 비밀번호는 넘기기만 하고}\\
+\fclL{28.4}{password=os.environ["PASSWORD"]) as tf:} & \fclC{저장하지 않음. 쿠키 묶음은 저장됨}\\[2pt]
+\fclL{4}{w = tf.weights()} & \fclC{\code{prodId} $\rightarrow$ 현재 \code{wei}(\%)}\\
+\fclL{4}{tf.orders_left()} & \fclC{80에서 오늘의 새 주문과 정지를 뺀 값}\\[2pt]
+\fclL{4}{orders = tf.plan(targets, min_wei=0.05, max_total=100,} & \fclC{dry run: 아무것도 보내지 않음}\\
+\fclL{27}{prices={"A000660": p}, limit_idx=5)} & \fclC{규칙 위반이면 \code{ValueError}}\\
+\fclL{4}{tf.dropped} & \fclC{1주 미만이라 뺀 주문}\\[2pt]
+\fclL{4}{try:} & \\
+\fclL{8}{ids = await tf.rebalance(targets, limit_idx=5)} & \fclC{\code{plan()} 후 1\,s 간격으로 주문}\\
+\fclL{4}{except RebalanceError as e:} & \\
+\fclL{8}{e.placed} & \fclC{실패 전에 보낸 주문 ID}\\[2pt]
+\fclL{4}{i = await tf.buy("A005930", 0.1, limit_prc=150700)} & \fclC{또는 \code{tf.sell}. 주문 ID를 반환}\\
+\fclL{4}{await tf.stop(i)} & \fclC{\code{stop(*ids)}는 여러 개를 받음}\\
+\fclL{4}{r = await tf.wait(i)} & \fclC{\code{r.outcome}, \code{r.cum_qty}, \code{r.qty2ord}, \code{r.avg_px}}\\[2pt]
+\fclL{4}{g = await tf.guidelines()} & \fclC{\code{g["ok"]}, \code{g["sector"]}, \code{g["turnover"]}}\\
+\end{tabular}}}{\code{targets}는 종목코드에서 목표 비중(\%)으로 가는 딕셔너리이며 포트폴리오 전체를 나타낸다. 목표에서 빠진 보유 종목은 목표 0이 되어 매도된다. \code{plan()}은 진행 중인 주문이 아직 채울 몫을 뺀 뒤 \code{rebalance()}가 보낼 주문을 매도 먼저 돌려준다. \code{prices}는 포트폴리오가 보유하지 않은 종목의 가격으로, 1주 검사를 할 수 있게 한다(\ref{sec:oneshare}절). 가격 인자(\code{**price})는 \code{limit_prc}, \code{limit_idx}, \code{stop_prc} 중 정확히 하나이며, \code{hm0}과 \code{hm1}은 선택이다. \code{AddOrder}가 주문 ID를 돌려주지 않으므로 \code{buy()}와 \code{sell()}은 피드에서 찾은 주문 ID를 돌려준다(\ref{sec:orders}절). \code{rebalance()}는 먼저 서버에서 오늘 주문을 다시 세고, 주문 수가 하루 한도의 남은 건수를 넘으면 아무것도 보내지 않는다. \code{r.outcome}은 \code{filled}, \code{stopped}, \code{partly_filled_then_stopped} 중 하나다. \code{p}는 호출자가 주는 원화 가격이다.}{DART Quant Team; pytimefolio 0.1.0의 \code{client.py}}

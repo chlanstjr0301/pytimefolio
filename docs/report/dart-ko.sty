@@ -1,0 +1,39 @@
+% Korean edition of the DART research note style. Loads dart.sty unchanged, then adds Hangul fonts
+% (xetexko via kotex) and Korean labels for figures and running text. XeLaTeX.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{dart-ko}[2026/11/24 DART research note, Korean edition]
+\RequirePackage{dart}
+\RequirePackage{kotex}   % under XeLaTeX this loads xetexko
+% Hangul font: Malgun Gothic (Windows, MiKTeX), then Apple SD Gothic Neo (macOS), Pretendard, Noto Sans CJK KR.
+\IfFontExistsTF{Malgun Gothic}{%
+  \setmainhangulfont{Malgun Gothic}[BoldFont={Malgun Gothic Bold}]%
+  \setsanshangulfont{Malgun Gothic}[BoldFont={Malgun Gothic Bold}]%
+  \setmonohangulfont{Malgun Gothic}[BoldFont={Malgun Gothic Bold}]}{%
+\IfFontExistsTF{Apple SD Gothic Neo}{%
+  \setmainhangulfont{Apple SD Gothic Neo}\setsanshangulfont{Apple SD Gothic Neo}\setmonohangulfont{Apple SD Gothic Neo}}{%
+\IfFontExistsTF{Pretendard}{%
+  \setmainhangulfont{Pretendard}\setsanshangulfont{Pretendard}\setmonohangulfont{Pretendard}}{%
+  \setmainhangulfont{Noto Sans CJK KR}\setsanshangulfont{Noto Sans CJK KR}\setmonohangulfont{Noto Sans CJK KR}}}}
+\linespread{1.18}% Hangul needs more leading than Latin text
+\renewcommand{\reportdate}{2026년 11월 24일}
+\renewcommand{\reportdatenum}{2026년 11월 24일}
+% Hangul fonts have no italic: figure references are set upright
+\renewcommand{\figref}[1]{{\color{navyM}그림~\ref{fig:#1}}}
+% \fig with Korean labels; otherwise identical to dart.sty
+\RenewDocumentCommand{\fig}{ o m +m o +m +m +m }{%
+  \par
+  \setbox\dartfigbox=\vbox{\setlength{\parskip}{0pt}%
+  \IfValueTF{#1}{\hsize=\dimexpr\textwidth+\extrawide\relax}{\hsize=\textwidth}\linewidth=\hsize\columnwidth=\hsize
+  \refstepcounter{dartfig}\label{fig:#2}%
+  \noindent{\color{navy}\rule{\linewidth}{0.8pt}}\par\vspace{1pt}
+  {\fontsize{9}{11}\selectfont\bfseries\RaggedRight 그림 \thedartfig. #3\par}
+  \IfValueT{#4}{{\fontsize{8}{10}\selectfont\color{greyD}\RaggedRight #4\par}}
+  \vspace{3pt}{\centering #5\par}\vspace{2pt}
+  {\fontsize{7}{8.6}\selectfont\color{greyD}\RaggedRight 주: #6\par 출처: #7\par}
+  \vspace{1pt}\noindent{\color{black}\rule{\linewidth}{0.4pt}}}%
+  \iffiginline
+    \Needspace{\dimexpr\ht\dartfigbox+\dp\dartfigbox\relax}\vspace{4pt}\noindent\makebox[\linewidth][l]{\box\dartfigbox}\par\vspace{2pt}%
+  \else
+    \begin{figure}[!ht]\noindent\makebox[\linewidth][l]{\box\dartfigbox}\end{figure}%
+  \fi}
+\endinput

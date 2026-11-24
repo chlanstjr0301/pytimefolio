@@ -1,0 +1,28 @@
+% Korean edition of figs/lastt.tex.
+\fig[wide]{lastt}{모든 응답을 예측하는 것은 규칙 (a)뿐이다. (b)는 5단계에서, (c)는 1단계에서 틀린다}[보낸 \code{lastT}별 예측 응답 유형과 관찰 결과. 연결 2개에서 3\,s 간격 요청 11개, 2026년 11월 24일 06:06 KST]{%
+{\tabfont\begin{tabularx}{\linewidth}{R{6mm} >{\RaggedRight\arraybackslash}X >{\centering\arraybackslash}p{9mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm}}
+\thd{단계} & \thd{보낸 \code{lastT}} & \thd{연결} & \thd{(a) 이 연결의 마지막 \code{t}} & \thd{(b) 아무 최근 시각} & \thd{(c) 이 계정의 마지막 \code{t}} & \thd{관찰}\\
+\rowsep
+1 & 0 & A & \textcolor{greyD}{전체} & \textcolor{greyD}{전체} & \textcolor{greyD}{전체} & \textbf{전체}\\
+\rowsep
+2 & 직전 응답의 \code{t} & A & \textcolor{greyD}{델타} & \textcolor{greyD}{델타} & \textcolor{greyD}{델타} & \cellcolor{navyXL}\textbf{델타}\\
+\rowsep
+3 & 그 전 응답의 \code{t} (6초 전) & A & \textcolor{greyD}{전체} & \cellcolor{navyL}\textbf{델타\,$\times$} & \textcolor{greyD}{전체} & \textbf{전체}\\
+\rowsep
+4 & 직전 \code{t} 빼기 1 (보낸 적 없는 값) & A & \textcolor{greyD}{전체} & \cellcolor{navyL}\textbf{델타\,$\times$} & \textcolor{greyD}{전체} & \textbf{전체}\\
+\rowsep
+5 & 직전 \code{t} 빼기 60 & A & \textcolor{greyD}{전체} & \cellcolor{navyL}\textbf{델타\,$\times$} & \textcolor{greyD}{전체} & \textbf{전체}\\
+\rowsep
+6 & 직전 \code{t} 빼기 3,600 & A & \textcolor{greyD}{전체} & \textcolor{greyD}{해당 없음} & \textcolor{greyD}{전체} & \textbf{전체}\\
+\rowsep
+7 & 직전 \code{t} 더하기 100 & A & \textcolor{greyD}{전체} & \textcolor{greyD}{해당 없음} & \textcolor{greyD}{전체} & \textbf{전체}\\
+\rowsep
+8 & 직전 응답의 \code{t} & A & \textcolor{greyD}{델타} & \textcolor{greyD}{델타} & \textcolor{greyD}{델타} & \cellcolor{navyXL}\textbf{델타}\\
+\rowsep
+8$'$ & 같은 값을 다시 & A & \textcolor{greyD}{전체} & \cellcolor{navyL}\textbf{델타\,$\times$} & \textcolor{greyD}{전체} & \textbf{전체}\\
+\specialrule{0.8pt}{1pt}{1pt}
+9 & 연결 A의 마지막 \code{t} & B & \textcolor{greyD}{전체} & \cellcolor{navyL}\textbf{델타\,$\times$} & \cellcolor{navyL}\textbf{델타\,$\times$} & \textbf{전체}\\
+\rowsep
+10 & 직전 응답의 \code{t} & B & \textcolor{greyD}{델타} & \textcolor{greyD}{델타} & \textcolor{greyD}{델타} & \cellcolor{navyXL}\textbf{델타}\\
+\end{tabularx}}
+}{$\times$가 있는 중간 파랑 칸은 관찰과 어긋나는 예측이고, 회색 글씨는 관찰과 맞는 예측이다. 관찰 열에서 델타는 연한 회청색으로 칠했다. 해당 없음: 규칙 (b)는 1시간 전의 \code{t}(6단계)나 서버보다 100\,s 앞선 \code{t}(7단계)가 최근인지 말하지 않으므로 거기서는 어느 응답 유형도 예측하지 않는다. 3단계는 서버가 6\,s 전에 실제로 보낸 \code{t}를, 4단계는 서버가 보낸 적 없는 값을 보낸다. 5\textasciitilde 7단계는 허용 구간이 있는지 시험한다. 8$'$단계는 방금 쓴 값을 반복한다. 9단계는 연결 A의 마지막 \code{t}로 연결 B를 연다. 응답에 \code{pos}가 있으면 전체, \code{pos_diff}가 있으면 델타다. 개장 전 전체 응답은 9,915바이트, 델타는 577바이트였다(\figref{replysizes}).}{DART Quant Team}

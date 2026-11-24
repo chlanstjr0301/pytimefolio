@@ -1,0 +1,11 @@
+% Korean edition of figs/setup.tex.
+\fig{setup}{모든 테스트는 2026년 11월 24일 계정 하나와 클라이언트 하나로 했다}[이 보고서의 모든 측정에 쓴 패키지, 테스트 시간, 클라이언트, 계정, 서버, 부하]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{16mm} >{\RaggedRight\arraybackslash}X}
+\thd{항목} & \thd{값}\\
+패키지 & \code{pytimefolio} v0.1.0, MIT 라이선스 [8]; \href{https://github.com/chlanstjr0301/pytimefolio}{\code{github.com/chlanstjr0301/pytimefolio}}\\\rowsep
+시간 & 2026년 11월 24일 05:38\textasciitilde 10:34 KST. 시장은 09:00에 열렸다. 이 시간 동안 서버의 영업일(\code{currBizDay})이 11월 23일에서 24일로 바뀌었다\\\rowsep
+클라이언트 & Windows 11의 WSL(Ubuntu). HTTP/2를 지원하는 curl 8. Python 3.14, h2를 포함한 httpx 0.28.1, websockets 17.4. PC 시계가 서버 \code{Date} 헤더보다 3\,s 빠름\\\rowsep
+계정 & 참가자 계정 하나. 운용 중인 포트폴리오 하나(RFM 13회차, 2026년 10월 12일\textasciitilde 11월 30일)\\\rowsep
+서버 & \code{https://contest.timefolio.net} (221.168.38.40). Let's Encrypt 인증서의 TLS 1.3. REST는 \code{/api} 아래, 실시간 피드는 \code{/hubs/main}\\\rowsep
+부하 & 시간 측정: 약 170\ms{}에 순차 요청 5개, 1\,s 간격으로 10회. 부하·요청 제한 테스트는 없음. 실시간 피드 요청은 3\,s마다. 하루 주문: 새 주문 9건과 정지 7건(주최측 기준 100건)\\
+\end{tabularx}}}{네트워크 시간은 이 클라이언트와 이 시간대에만 해당한다.}{DART Quant Team}

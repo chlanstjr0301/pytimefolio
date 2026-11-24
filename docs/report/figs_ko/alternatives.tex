@@ -1,0 +1,10 @@
+% Korean edition of figs/alternatives.tex.
+\fig[wide]{alternatives}{\code{asyncio} 스레드 하나에서 HTTP 요청을 직접 보내며, 확인되지 않은 주문은 다시 보내지 않는다}[설계 결정마다 검토한 대안]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{27mm} >{\RaggedRight\arraybackslash}p{52mm} >{\RaggedRight\arraybackslash}X}
+\thd{결정} & \thd{선택} & \thd{대안과 탈락 이유}\\
+서버 접근 방식 & 페이지가 하는 것과 같은 HTTP 요청: 재사용 요청당 curl 16.0\ms{}, Python 31\textasciitilde 39\ms & 브라우저 자동화(Playwright): 모든 동작이 페이지 렌더링을 기다리고, 레이아웃이 바뀌면 깨지며, 실행 호스트에 브라우저가 필요\\\rowsep
+동시성 & 스레드 하나의 \code{asyncio} & 동기 요청: 피드 요청이 응답을 기다리는 동안 주문도 기다리게 된다. 스레드: 피드 스레드가 아무 두 문장 사이에서 상태를 바꿀 수 있어 상태를 읽을 때마다 잠금이 필요하다. \code{asyncio}는 \code{await}에서만 태스크를 바꾼다. 두 태스크 모두 대부분 네트워크를 기다리므로 GIL 비용이 없다\\\rowsep
+피드 전송 방식 & WebSocket만 & 서버 협상 응답이 제시하는 Server-Sent Events와 롱 폴링: 롱 폴링은 메시지마다 HTTP 요청이 1개 더 든다. 둘 다 구현하지 않음\\\rowsep
+WebSocket의 토큰 & \code{Authorization} 헤더 & 브라우저처럼 URL에 넣기: 토큰이 접근 로그에 남는다\\\rowsep
+\code{AddOrder} 응답 유실 & 다시 보내지 않음: 15\,s 동안 피드에서, 다음으로 REST \code{Orders}에서 찾고, 둘 다 없으면 \code{AmbiguousState}. 서버에 닿지 않은 연결 실패 뒤에만 한 번 재전송 & 즉시 재전송: 응답에 주문 ID가 없으므로 주문이 중복될 위험\\
+\end{tabularx}}}{‘선택’은 \code{pytimefolio} 0.1.0이 구현한 것이다. 요청 시간은 \ref{sec:transport}절에서 가져왔으며, 브라우저 자동화의 시간은 재지 않았다. 실시간 피드의 협상 응답(\ref{sec:feed}절)은 WebSocket, Server-Sent Events, 롱 폴링을 나열한다.}{DART Quant Team}

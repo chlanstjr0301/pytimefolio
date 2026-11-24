@@ -1,0 +1,10 @@
+% Korean edition of figs/readeps.tex.
+\fig[wide]{readeps}{조회 엔드포인트 4개가 응답한다. \code{Orders}는 날짜 범위가 필요하고 \code{PfBs}는 404를 돌려준다}[운용 중인 \code{pfId}와 \code{d}로 호출한 \code{Portfolio} 조회 엔드포인트(07:33 KST), \code{d0}과 \code{d1}로 호출한 \code{Orders}(09:16 KST), 2026년 11월 24일]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{14mm} R{10mm} R{16mm} >{\RaggedRight\setlength{\leftskip}{3mm}\arraybackslash}X >{\RaggedRight\arraybackslash}p{52mm}}
+\thd{경로} & \thd{HTTP} & \thd{레코드} & \thd{내용} & \thd{래퍼에서의 용도}\\
+\code{Session} & 200 & 1 & \code{hm0} 09:00, \code{hm1} 15:20 & 주문 시작·종료 시각의 범위\\\rowsep
+\code{Universe} & 200 & 2,648 & \code{Id}, \code{nm}, \code{sec}(GICS 섹터). 일부 종목코드는 영숫자 혼합 & 종목코드 검증, 종목별 섹터\\\rowsep
+\code{Trades} & 200 & 62 & 진입부터 청산까지 포지션당 레코드 1개. 07:33에 23개가 열려 있어 보유 종목 23개와 일치. 그날 진입 뒤 64개. 시각은 UTC & 포지션 이력과 실현 손익\\\rowsep
+\code{Orders} & 200 & 주문당 1 & \code{d0}부터 \code{d1}까지의 모든 주문(\code{Done} 포함)이므로 개수는 보낸 날짜에 따라 다름. 필드: \code{Id}, \code{state}, \code{qty2ord}, \code{cumQty}, \code{avgPx}(평균 체결가, 원), \code{cnclT}, \code{genT}, \code{lastMCV}, \code{sgn}. \code{d}로 보내면 빈 목록 & 시작할 때 그날 주문 건수\\\rowsep
+\code{PfBs} & 404 & 0 & 시도한 3개 영역(\code{Portfolio}, \code{Contest}, \code{Analysis}) 어디에도 없음, GET과 POST 모두 & 쓰지 않음. 잔고는 실시간 피드에서\\
+\end{tabularx}}}{별도 표시가 없으면 쿼리 매개변수를 붙인 GET. HTTP: 상태 코드. 레코드: 응답의 항목 수. \code{Orders} 매개변수는 웹 페이지 자체의 요청에서 그대로 가져왔다.}{DART Quant Team}

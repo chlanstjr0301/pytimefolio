@@ -1,0 +1,14 @@
+% Korean edition of figs/guarantees.tex.
+\fig[wide]{guarantees}{사용자가 믿을 수 있는 것과 그 가정}[\code{pytimefolio} 0.1.0의 보장마다 필요한 가정, 근거, 시험하지 않은 것]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{38mm} >{\RaggedRight\arraybackslash}p{42mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{44mm}}
+\thd{사용자가 믿을 수 있는 보장} & \thd{필요한 가정} & \thd{근거} & \thd{시험하지 않은 것}\\
+병합 상태는 \code{t}가 같은 서버 스냅샷과 같다 & 피드 요청은 하나만. 서버가 델타 규칙 (a)를 유지 & 실서버: 09:35에 \code{pos}와 \code{ords}가 15회 중 15회 일치(\ref{sec:feed}) & \code{bs}와 \code{msecs}의 필드 단위 비교. 장중 규칙 (b)와 (c)\\\rowsep
+읽기, 주문, \code{wait()}은 26\,s보다 오래된 상태를 쓰지 않는다 & 피드 태스크가 실행 중. 3\,s마다 폴링은 목표이지 보장이 아님 & 오프라인: 낡은 피드는 \code{StaleFeed}. 핑은 20\,s 응답 마감을 늘리지 않음(\ref{sec:wrappertests}) & 실제 피드 장애\\\rowsep
+\hl 서버가 받았을 수 있는 주문은 다시 보내지 않는다 & 401은 주문 처리기보다 먼저 온다[9]. 연결 설정 전 연결 오류는 요청이 나가지 않았음을 뜻함 & 오프라인: 잃어버린 응답은 재전송 안 함. 실패한 재전송은 검색하며 세 번째 전송 없음(\ref{sec:orders}) & 주문에서 받은 401. 실제 \code{AddOrder} 도중 연결 끊김\\\rowsep
+\hl 넣은 주문은 15\,s 안에 확인되거나 \code{AmbiguousState}가 발생한다 & 서버가 15\,s 안에 새 주문을 피드나 \code{Orders}에 보여줌 & 실서버: 매수는 \code{AddOrder} 후 1\textasciitilde 3\,s 만에 찾음. 08:30 주문은 08:33까지(\ref{sec:validity}) & 느린 서버. 매도의 지연\\\rowsep
+\hl 돌려준 주문 ID는 사용자의 주문이다 & 래퍼 실행 중 계정당 제출자 하나 & 오프라인: 같은 주문 2건은 ID 2개. 맞는 새 레코드 2개면 \code{AmbiguousState}(\ref{sec:orders}) & 웹 페이지나 다른 프로세스에서 넣은 똑같은 주문 1건은 알아챌 수 없음\\\rowsep
+하루 최대 80건, 쓰기 사이 최소 1\,s & 건수 파일 하나에 프로세스 하나. 취소를 주문으로 셈 & 오프라인: 한도, 동기화, 1.002\,s 간격. 실서버: 10:34까지 카운터 80건 중 16건(\ref{sec:design}) & 건수 파일 하나를 쓰는 여러 프로세스. 주최측이 취소를 세는지(Q2)\\\rowsep
+\hl 목표 비중은 계획 시점에 종목, 섹터, 합계 한도를 지킨다 & \code{plan()} 실행 시점에 피드 값(\code{weiLimit}, \code{msecs})이 최신 & 실서버: 산업재 +6\%p 거부, +3\%p 허용. 100\% 초과 목표 거부(\ref{sec:guidelines}) & 실행 중 비중: 먼저 보낸 매도가 먼저 체결된다는 보장 없음. 위반을 언제 세는지(Q4)\\\rowsep
+403이나 429 뒤에는 모든 쓰기가 멈춘다 & 서버가 차단을 403이나 429로 알림 & 오프라인: 쓰기나 읽기에서 403·429면 쓰기 중단. 차단된 피드는 재연결 중단(\ref{sec:design}) & 실서버에서 차단을 본 적 없음\\\rowsep
+최대 7일간 비밀번호 없이 갱신 & 서버가 7일 쿠키 만료를 유지. 720\,s에 갱신 & 실서버: 두 번째 프로세스가 저장된 쿠키 묶음으로 갱신. 오프라인: 재시작해도 만료 유지(\ref{sec:auth}) & 720\,s 이상 또는 7일 동안 돈 프로세스\\
+\end{tabularx}}}{강조 행은 운영 가정에 기대거나, 실패 비용에 비해 근거가 얇은 보장이다. 괄호 안 절 번호가 근거다. \figref{goalstatus}는 같은 테스트로 목표를 판단한다.}{DART Quant Team; \figref{tests}}

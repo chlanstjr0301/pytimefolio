@@ -1,0 +1,65 @@
+% Korean edition of sections/app_b_decisions.tex.
+\par\Needspace{50mm}\seclabel
+\claim{부록 \secnum{B}{app:decisions}\quad 설계 결정 기록}
+\lead{래퍼의 동작은 결정 36개가 정하며, 그중 19개는 틀리면 주문, 계정, 자격 증명을 잃을 수 있다.} 각 행은 결정, 근거가 있는 절과 그 절의 수치 하나, 근거의 출처를 담는다. 출처는 측정(2026년 11월 24일 우리가 보낸 요청), 주최측(이메일 답장[5]), 대회(대회 사이트의 가이드라인 페이지), 프레임워크 문서(ASP.NET Core 문서[9]) 중 하나다. \textbf{틀릴 때 비용} 열은 잘못된 결정이 주문을 넣거나 잃거나 중복시키고, 가이드라인을 어기고, 계정을 차단당하게 하거나 자격 증명을 노출하면 높음, 추가 요청이나 지연이나 눈에 보이는 오류로 끝나면 낮음이다. \textbf{재검토 조건} 열은 결정을 다시 열게 할 관찰을 적는다. 표는 계층별로 결정을 묶으며, D 번호는 본문에서 인용한 그대로 두었으므로 표 안에서 순서대로가 아니다.
+
+\newcommand{\dlogtable}[2]{%
+\par\Needspace{30mm}\vspace{4pt}%
+{\tabfont\setlength{\LTleft}{0pt}\LTright=\dimexpr-\extrawide\relax plus 1fill\relax\setlength{\LTpre}{0pt}\setlength{\LTpost}{0pt}%
+\begin{longtable}{>{\RaggedRight\arraybackslash}p{6mm} >{\RaggedRight\arraybackslash}p{54mm} >{\RaggedRight\arraybackslash}p{47mm} >{\RaggedRight\arraybackslash}p{15mm} >{\RaggedRight\arraybackslash}p{9mm} >{\RaggedRight\arraybackslash}p{37mm}}
+\multicolumn{6}{@{}l}{\fontsize{8.5}{10.5}\selectfont\bfseries\color{navy}#1}\\[2pt]
+\thd{D} & \thd{결정} & \thd{근거 (절: 수치)} & \thd{출처} & \thd{틀릴 때 비용} & \thd{재검토 조건}\\
+\endfirsthead
+\multicolumn{6}{@{}l}{\fontsize{8.5}{10.5}\selectfont\bfseries\color{navy}#1 (계속)}\\[2pt]
+\thd{D} & \thd{결정} & \thd{근거 (절: 수치)} & \thd{출처} & \thd{틀릴 때 비용} & \thd{재검토 조건}\\
+\endhead
+#2
+\end{longtable}}\par\vspace{2pt}}
+
+\dlogtable{전송과 로그인 (\ref{sec:transport}절, \ref{sec:auth}절)}{%
+D1 & 프로세스가 살아 있는 동안 HTTP/2 클라이언트 하나 & \ref{sec:transport}: 새 연결 106.5\ms{}, 재사용 연결 16.0\ms & 측정 & 낮음 & 서버가 HTTP/2를 중단함\\\rowsep
+D2 & \code{keepalive_expiry} 10\,s, 서버 유휴 타임아웃보다 짧게 & \ref{sec:transport}: 유휴 연결은 15\textasciitilde 30\,s 뒤 닫힘 & 측정 & 낮음 & 로그에 재연결이 나타남\\\rowsep
+D3 & 지연 갱신: 타이머 없음. 액세스 토큰 발급 후 720\,s가 지난 뒤 첫 REST 요청이 서버 시계(최근 \code{Date} 헤더 9개 시차의 중앙값) 기준으로 갱신. 실시간 피드는 연결·재연결 때만 토큰을 요청 & \ref{sec:auth}: 액세스 토큰 900\,s 유효, PC 시계가 서버와 3\,s 차이 & 측정 & 낮음 & 액세스 토큰 유효기간이 바뀜\\\rowsep
+D4 & 갱신 때 쿠키 묶음 전체를 보냄 & \ref{sec:auth}: \code{refreshToken}만 보내면 HTTP 401 & 측정 & 낮음 & \code{SilentRefresh}가 \code{refreshToken}만으로 받아들임\\\rowsep
+D5 & 쿠키 묶음의 남은 기간이 1일 미만이면 로그인. 쿠키별 만료 시각을 \code{session.json}에 남겨 재시작 뒤에도 유지 & \ref{sec:auth}: 만료는 로그인 후 7일로 고정, 갱신해도 그대로 & 측정 & 낮음 & 갱신이 만료를 연장하기 시작함\\\rowsep
+D16 & 종료 시 \code{Logout} 안 함. 쿠키 묶음은 저장소 밖 \code{~/.config/pytimefolio/session.json}에 권한 0600으로 저장 & \ref{sec:auth}: 저장한 쿠키 묶음이 \code{Logout} 뒤에도 갱신됨 & 측정 & 높음 & \code{Logout}이 서버의 로그인 세션을 끝내기 시작함\\\rowsep
+D17 & 저장한 로그인 세션이 동작하는 동안은 로그인하지 않음. 갱신이 실패하면 로그인 & \ref{sec:auth}: 로그인마다 7일짜리 로그인 세션이 늘어남 & 측정 & 낮음 & 서버에서 로그인 세션을 끝낼 수 있게 됨\\\rowsep
+D18 & 시작 때 시간이 중요한 요청 전에 \code{warm_up()} & \ref{sec:transport}: 새 프로세스의 첫 요청 1.2\textasciitilde 1.3\,s & 측정 & 낮음 & 첫 요청 비용이 재사용 요청과 같아짐\\\rowsep
+D26 & 단일 갱신: 동시 \code{token()} 호출은 \code{SilentRefresh} 하나를 공유하며, 토큰 잠금 안에서 다시 확인 & \ref{sec:auth}: 동시 갱신 2건 모두 HTTP 200. 오프라인에서 5건 호출에 1건 전송 & 측정 & 낮음 & 두 번째 갱신이 첫 토큰을 무효화하기 시작함\\\rowsep
+D36 & 401이면 한 번 갱신하고 요청을 다시 보냄(\code{AddOrder} 포함). 두 번째 401은 \code{AuthError} & \ref{sec:auth}: ASP.NET Core는 핸들러 실행 전에 인증함[9]. 주문에서 401은 관찰 못함 & 프레임워크 문서[9] & 높음 & 401을 받은 주문이 주문 목록에 나타남\\\rowsep
+D35 & 비밀번호는 저장하지 않음. 호출자가 생성자에 넘김(예: 환경 변수에서). 쿠키 묶음만 로그인과 갱신 때 원자적으로 저장 & \ref{sec:auth}: 쿠키 묶음만으로 7일간 갱신됨 & 측정 & 높음 & 서버가 폐기 가능한 자격 증명을 제공함\\
+}
+
+\dlogtable{조회와 실시간 피드 (\ref{sec:queries}절, \ref{sec:feed}절)}{%
+D6 & 날짜는 \code{currBizDay}에서만 가져옴 & \ref{sec:queries}: 주말 날짜에 직전 거래일 데이터가 HTTP 200으로 옴 & 측정 & 높음 & 서버가 거래일이 아닌 날짜에 오류를 돌려줌\\\rowsep
+D7 & 운용 중인 포트폴리오는 대회, 초기화 여부, 종료일로 고름 & \ref{sec:queries}: \code{active}가 모든 포트폴리오에서 false. 중복 이름 & 측정 & 높음 & 운용 중인 포트폴리오를 표시하는 새 필드가 생김\\\rowsep
+D8 & 피드 요청은 하나만 보내 둠. \code{t}는 해석하지 않고 되돌림. 끊기면 스냅샷부터. 시각은 \code{Date} 헤더 시계로(\code{kstNow}는 저장만 하고 쓰지 않음) & \ref{sec:feed}: 규칙 (a)가 모든 응답을 예측. \code{t} 오프셋 32,400\,s & 측정 & 높음 & 실시간 피드가 요청 없이 응답을 밀어 보내기 시작함\\\rowsep
+D9 & 재연결 전마다 유효한 액세스 토큰을 받음. 토큰을 갱신해도 열린 WebSocket은 그대로 둠 & \ref{sec:feed}: 열린 WebSocket이 만료 후 8분 동안 응답, REST 거부 시점 300\,s를 넘김(\figref{token}). 새 협상은 HTTP 401로 거부 & 측정 & 낮음 & 서버가 토큰 만료 때 WebSocket을 닫음\\\rowsep
+D14 & 델타는 \code{int(Id)}로, 바뀐 필드만 병합. 종목코드(\code{prodId})에서 레코드 ID로 가는 색인 & \ref{sec:feed}: 병합 상태가 \code{t}가 같은 스냅샷과 15회 중 15회 일치 & 측정 & 높음 & 병합 상태가 스냅샷과 달라짐\\\rowsep
+D27 & \code{currBizDay}가 KST 날짜와 같아질 때까지 주문하지 않음 & \ref{sec:queries}: 영업일이 06:02\textasciitilde 07:07 사이에 넘어감 & 측정 & 높음 & 주최측이 전환 시각을 공개함\\\rowsep
+D30 & 마지막 응답이 26\,s(3\,s 폴링 2회 + 20\,s 응답 타임아웃, 요청마다 핑으로 연장되지 않는 마감 하나)보다 오래되면 읽기, 주문, \code{wait()}이 \code{StaleFeed}. 피드 오류는 full-jitter 백오프 U(0, min(30, $2^n$))\,s로 재연결. 단 403이나 429면 피드 종료 & \ref{sec:feed}: 3\,s마다 피드 요청 하나, 15\,s마다 핑 & 측정 & 높음 & 응답이 오는데도 \code{StaleFeed}가 발생함\\\rowsep
+D31 & 델타마다 \code{bs_updated}를 \code{bs}에 병합 & \ref{sec:feed}: 델타 20개 중 20개에 \code{bs_updated}. \code{na}가 60\,s 안에 428,180원 움직임 & 측정 & 낮음 & \code{bs_updated} 없는 델타가 옴\\
+}
+
+\dlogtable{주문 (\ref{sec:intro}장, \ref{sec:orders}절, \ref{sec:design}장, \ref{sec:wrappertests}절)}{%
+D10 & 하루 최대 80건. 쓰기 사이 최소 1\,s. 3\,s마다 피드 요청 1건 & \ref{sec:intro}: 하루 100건 이상 주문하는 IP는 차단될 수 있음. 3\,s는 브라우저 기록과 같음(\ref{sec:feed}) & 주최측 & 높음 & 주최측이 한도를 바꿈\\\rowsep
+D11 & 서버가 받았을 수 있는 주문은 다시 보내지 않음. \code{AddOrder} 응답을 잃으면 15\,s 동안 피드에서, 다음으로 쓰기 5\,s 전 이후 생성된 REST \code{Portfolio/Orders} 레코드에서 찾고, 없으면 \code{AmbiguousState}. 연결이 맺어지지 않은 요청(\code{ConnectError}, \code{ConnectTimeout}, \code{PoolTimeout})만 한 번 다시 보내며, 그것도 실패하면 같은 방식으로 찾고 세 번째 전송은 없음. 쓰기와 검색 내내 잠금 하나, 이미 돌려준 ID는 건너뜀, 맞는 새 레코드가 둘 이상이면 \code{AmbiguousState}(계정당 제출자 하나를 가정) & \ref{sec:orders}: \code{AddOrder} 응답에 주문 ID가 없음 & 측정 & 높음 & \code{AddOrder} 응답에 주문 ID가 실리기 시작함\\\rowsep
+D13 & 주문 \code{wei} $=$ 목표 비중 $-$ 현재 비중 & \ref{sec:orders}: 0.13\% 보유에서 \code{wei} 0.3이 \code{qty2ord} 7 & 측정 & 높음 & \code{qty2ord}가 목표 비중을 따르기 시작함\\\rowsep
+D15 & 끝남 $=$ \code{Done}. \code{cnclT} null이면 체결, \code{cnclT} 설정이면 정지, 거기에 \code{cumQty}~$>$~0이면 일부 체결 후 정지 & \ref{sec:orders}: 정지한 주문 3건이 \code{cnclT} 설정, \code{cumQty} 4 중 0으로 \code{Done} & 측정 & 높음 & 서버가 정지 상태를 따로 추가함\\\rowsep
+D21 & 매도는 \code{ls} $=$ L, \code{ex} $=$ X로 보냄 & \ref{sec:wrappertests}: 실제 매도가 \code{sgn} $= -1$로 기록됨 & 측정 & 높음 & 서버가 이 형식을 거부함\\\rowsep
+D29 & 주문 \code{wei}는 주문을 만들 때 0.01\%(\code{WEI_STEP})로 한 번 맞춤. 같은 값을 보내고 피드에서 0.005 이내로 대조 & \ref{sec:orders}: 서버가 \code{wei}를 보낸 그대로 저장(0.04, 0.1, 0.3) & 측정 & 낮음 & 서버가 반올림한 \code{wei}를 저장함\\\rowsep
+D32 & \code{plan()}은 진행 중인 주문의 남은 크기 \code{wei} $\times$ (1 $-$ \code{cumQty} / \code{qty2ord})를 \code{ex} 부호를 붙여 뺌 & \ref{sec:orders}: 7주가 7분 37초에 걸쳐 체결 & 측정 & 높음 & 주문이 피드 요청 한 번 안에 체결됨\\\rowsep
+D33 & 하루 건수: \code{AddOrder}마다 +1, 정지한 주문 ID마다 +1, 서버에 닿지 않은 요청은 0. 파일 잠금 아래 원자적으로 기록, 한 프로세스 안에서 정확. 시작과 \code{rebalance()} 때 max(로컬, 서버)로 동기화. 주문이 실패하면 \code{rebalance()}가 이미 넣은 ID와 함께 \code{RebalanceError} & \ref{sec:wrappertests}: 10:34까지 80건 중 16건 사용(새 주문 9, 정지 7) & 측정 & 높음 & 주최측이 취소 포함 여부를 알려줌\\\rowsep
+D34 & 어떤 요청에서든 HTTP 403이나 429면 \code{BlockedError}. 이후 프로세스의 모든 쓰기를 거부하며, 협상에서 받으면 피드가 재연결을 멈춤 & \ref{sec:intro}: 하루 100건 또는 트래픽 폭주에 차단을 예고 & 주최측 & 높음 & 서버가 \code{Retry-After} 헤더와 함께 429를 보냄\\
+}
+
+\dlogtable{\code{plan()}과 가이드라인 (\ref{sec:design}장, \ref{sec:wrappertests}절, \ref{sec:oneshare}절, \ref{sec:guidelines}절)}{%
+D12 & 시장 데이터는 범위 밖. 가격은 호출자가 넘김 & \ref{sec:design}: 피드는 보유 종목의 가격(\code{close})만 줌 & 측정 & 낮음 & 대회 서버가 \code{Universe}의 모든 종목 가격을 주기 시작함\\\rowsep
+D19 & \code{plan()}은 합계가 100\%(\code{max_total})를 넘는 목표를 거부 & \ref{sec:wrappertests}: 139\% 목표가 water-filling을 통과 & 측정 & 높음 & 대회가 100\% 초과 합계를 허용함\\\rowsep
+D20 & \code{plan()}은 1주 비중(가격 $\times$ 100 / \code{bs.na})보다 작은 주문을 뺌 & \ref{sec:oneshare}: 1.76주어치 0.04\%가 두 번 모두 \code{qty2ord} 1(내림) & 측정 & 낮음 & 1주 비중보다 작은 주문이 1주 체결됨\\\rowsep
+D22 & 주가는 \code{prices=}가 있으면 그 값, 없으면 보유 종목에 한해 피드 \code{close}. 가격 없는 주문은 경고와 함께 유지. 뺀 주문은 \code{tf.dropped}에 보관 & \ref{sec:oneshare}: SK하이닉스 +0.03\%는 빠지고 큰 주문 2건은 유지 & 측정 & 낮음 & 피드가 보유하지 않은 종목의 가격도 주기 시작함\\\rowsep
+D23 & \code{plan()}은 \code{Universe} 밖 목표나 max(2 $\times$ 시장 섹터 비중, 10\%) 초과를 거부 & \ref{sec:guidelines}: 산업재 +6\%p 거부, +3\%p 허용 & 대회 & 높음 & 서버가 섹터 주문을 막기 시작함\\\rowsep
+D24 & 순자산은 \code{bs.na}. 대체값은 \code{pos} $\times$ \code{close} $\times$ 100 / \code{wei}의 중앙값 & \ref{sec:oneshare}: 837,002,427원 대 836,798,658원, 0.02\% 차이 & 측정 & 낮음 & \code{bs}에서 \code{na}가 사라짐\\\rowsep
+D25 & \code{guidelines()}는 \code{cmpl}, \code{tags}, \code{sec}로 찾은 \code{msecs}, \code{Violations}에서. \code{ok}는 현재 위반 0건과 회전율 5\%가 필요. 소형주와 회전율은 보고만 하고 \code{plan()} 밖 & \ref{sec:guidelines}: 레코드 ID로 찾자 서버 집계 0인데 IT가 한도 초과로 나옴 & 대회 & 낮음 & 피드 필드 이름이 바뀜\\\rowsep
+D28 & \code{plan()}은 목표마다 종목의 \code{weiLimit}, 보유하지 않은 종목은 15\%(삼성전자 \code{A005930}은 40\%)로 상한 & \ref{sec:guidelines}: 서버가 \code{weiLimit}를 넘는 매수를 직접 거부 & 대회 & 낮음 & 대회가 종목 한도를 바꿈\\
+}

@@ -1,0 +1,17 @@
+% Korean edition of figs/goals.tex.
+\fig[wide]{goals}{목표 5개와 비목표 5개가 래퍼의 범위를 정한다}[\code{pytimefolio}의 범위: 목표마다 달성 여부를 보여주는 기준]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{7mm} >{\RaggedRight\arraybackslash}p{70mm} >{\RaggedRight\arraybackslash}X}
+\thd{ID} & \thd{목표} & \thd{성공 기준}\\
+\hl G1 & 사람 없이 대회 기간 내내 로그인 상태를 유지한다 & 시작부터 11월 30일까지 수동 로그인 없음. 모든 갱신과 로그인을 기록\\\rowsep
+G2 & 전략에 포트폴리오의 현재 상태를 준다 & (a) 병합: 델타마다 병합 상태가 \code{t}가 같은 스냅샷과 같다. (b) 신선도: 읽기, 주문, \code{wait()}이 26\,s(폴링 2회와 20\,s 응답 마감)보다 오래된 상태를 쓰지 않는다(대신 \code{StaleFeed}). 3\,s 폴링은 목표이지 보장이 아니다\\\rowsep
+G3 & 주최측 한도와 대회 가이드라인 안에서 주문을 넣고, 정지하고, 추적한다 & 하루 최대 80건(새 주문과 정지한 주문 합계). 쓰기 사이 최소 1\,s. 서버가 받았을 수 있는 주문은 다시 보내지 않음. 넣은 주문은 15\,s 안에 피드나 REST \code{Orders}에서 확인. \code{plan()}은 계획 시점에 합계, 유니버스, 종목, 섹터 규칙을 어기는 목표 비중을 거부(실행 중 비중은 한도 안에 붙잡아 두지 않음)\\\rowsep
+G4 & 폴링이 주문을 늦추지 않는다 & 피드 폴링과 주문이 이벤트 루프 하나를 공유하며, 어떤 주문도 피드 응답을 기다리지 않음(\ref{sec:live}장)\\\rowsep
+G5 & 모호하면 추측하지 않고 멈춘다 & 포트폴리오 규칙에 맞는 항목이 없거나 둘 이상일 때, 넣은 주문에 새 레코드가 둘 이상 맞을 때, \code{currBizDay}가 KST 날짜와 다를 때, 넣은 주문을 15\,s 안에 피드에서도 REST \code{Orders}에서도 찾지 못할 때(재전송 안 함) \code{AmbiguousState}. 400이면 \code{RequestError}\\
+\specialrule{0.8pt}{1pt}{1pt}
+\thd{ID} & \thd{비목표} & \thd{이유}\\
+N1 & 시장 데이터(가격, 호가창) & 가격은 호출자가 준다. 다른 API를 넣으면 로그인과 한도가 하나씩 더 생긴다\\\rowsep
+N2 & 전략과 포트폴리오 구성 & 래퍼는 목표 비중을 주문으로 바꾼다. 목표를 고르는 것은 호출자 몫이다\\\rowsep
+N3 & 브라우저 자동화 & 모든 동작이 페이지 렌더링을 기다리고 레이아웃이 바뀌면 깨진다. 페이지 자체의 HTTP 요청은 16\textasciitilde 39\ms{}가 걸린다(\ref{sec:transport}절)\\\rowsep
+N4 & 여러 계정 또는 다른 참가자의 포트폴리오 & 프로세스당 계정 하나. 다른 참가자의 데이터는 우리가 조회할 것이 아니다\\\rowsep
+N5 & 요청 한도 탐색 & 주최측은 트래픽 폭주를 이유로 IP 주소를 차단할 수 있다\\
+\end{tabularx}}}{G = 목표, N = 비목표. 음영: G1은 11월 30일까지 실행해야만 보일 수 있다. \ref{sec:live}장의 실서버 테스트는 오전 한나절이었다. 80건 한도는 주최측 기준인 하루 100건보다 20건의 여유를 둔다.}{DART Quant Team}

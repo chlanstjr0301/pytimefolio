@@ -1,0 +1,12 @@
+% Korean edition of figs/summary.tex.
+\fig[wide]{summary}{계층마다 실서버에서 측정했고, 각 결과가 부록 B의 결정을 정한다}[절별 주요 결과와 그것이 뒷받침하는 결정(부록~\ref{app:decisions}의 D 번호)]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{27mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{29mm}}
+\thd{계층} & \thd{결과} & \thd{결정}\\
+\textbf{\ref{sec:transport} 전송} & 요청은 새 HTTP/2 연결에서 106.5\ms{}, 재사용 연결에서 16.0\ms{}가 걸린다. 서버는 15\textasciitilde 30\,s 유휴 후 연결을 닫는다 & D1, D2, D18\\\rowsep
+\textbf{\ref{sec:auth} 로그인 세션} & 액세스 토큰은 900\,s 유효하며 만료 후 300\,s까지 받아준다. 쿠키 묶음은 7일 유효하고, 갱신으로 연장되지 않으며, 저장한 사본은 \code{Logout} 뒤에도 계속 갱신된다 & D3\textasciitilde D5, D16, D17, D26, D35, D36\\\rowsep
+\textbf{\ref{sec:queries} 조회} & 모든 조회는 Bearer 헤더로 인증된다. 거래일이 아닌 날짜는 HTTP~200과 함께 다른 날의 데이터를 돌려준다 & D6, D7, D27\\\rowsep
+\textbf{\ref{sec:feed} 실시간 피드} & 피드는 요청할 때만(3\,s마다) 답한다. \code{t}를 정확히 되돌리면 11,344바이트 스냅샷 대신 1,053\textasciitilde 1,912바이트 델타를 받는다. 열린 WebSocket은 토큰보다 오래 산다 & D8, D9, D14, D30, D31\\\rowsep
+\textbf{\ref{sec:orders} 주문} & \code{AddOrder}는 주문 ID를 돌려주지 않는다. \code{wei}는 주문 크기다(0.3\%가 7주를 요구). 끝난 주문은 \code{Done}이 된다. 7주가 7분 37초에 체결됐다 & D11, D13, D15, D29, D32\\\rowsep
+\textbf{\ref{sec:design} 래퍼 설계} & asyncio로 HTTP를 직접 보내 로그인 세션 하나를 유지한다. 전략과 시장 데이터는 호출자 몫이다. 하루 100건 이상 주문하는 IP 주소는 차단될 수 있다 & D10, D12, D34\\\rowsep
+\textbf{\ref{sec:live} 실서버 테스트} & 시작, 피드, 매수, 매도가 동작했다. \code{qty2ord}는 내림한다. 결함 2개를 고쳤다. 15\,s 주문 검색은 느린 서버에서 시험하지 않았고, 한도는 목표에 대해서만 검사한다 & D19\textasciitilde D25, D28, D33\\
+\end{tabularx}}}{2026년 11월 24일 05:38\textasciitilde 10:34 KST, 계정 하나로 측정. \ref{sec:transport}절: curl은 09:00 개장 전, Python은 장중. 3\,s 폴링은 10월 28일 기록에서.}{DART Quant Team}

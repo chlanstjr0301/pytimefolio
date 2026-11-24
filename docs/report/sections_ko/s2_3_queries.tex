@@ -1,0 +1,34 @@
+% Korean edition of sections/s2_3_queries.tex.
+\seclabel
+\claim{\secnum{2.3}{sec:queries}\quad 거래일이 아닌 날짜를 보내면 HTTP 200과 함께 다른 날의 데이터가 온다}
+
+\lead{모든 REST 요청은 \code{/api/{area}/{name}} 형태이며, 경로는 로그인 뒤에만 내려오는 코드에서 얻었다.} 공개 JavaScript 번들에는 \code{Auth} 경로만 있다. 거래 화면의 코드는 \code{/assets/app/} 아래에 있고 \code{asset_token} 쿠키가 있어야 내려오므로(\figref{creds}), 나머지 경로는 로그인 뒤 내려받은 코드에서 얻었다(\figref{paths}). 관리자 영역(\code{Master}, \code{Admin})은 래퍼의 범위 밖이다.
+
+\input{figs_ko/paths.tex}
+
+\lead{Bearer 헤더면 충분하며, 조회에는 쿠키가 필요 없다.} 실제 포트폴리오의 \code{Portfolio/Violations}에 \code{GET}을 보내면 헤더에 액세스 토큰이 있을 때 HTTP 200, 없을 때 401이 왔다.
+
+\lead{포트폴리오 2개가 같은 대회 이름을 가질 수 있으므로, 운용 중인 포트폴리오는 대회 ID, 초기화 여부, 종료일로 골라야 한다.} \code{pfs} 목록은 대회에 참가하거나 초기화할 때마다 항목이 하나씩 늘어난다(\figref{pfs}). 13회차에는 대회 이름이 같은 항목이 2개 있어서, 이름으로 고르면 초기화로 끝난 10월 1\textasciitilde 8일 항목이 나올 수 있다.
+
+\input{figs_ko/pfs.tex}
+
+\lead{필드 이름 2개는 오해를 부른다.} \code{active}는 운용 중인 항목을 포함해 6개 모두 False이므로 어느 포트폴리오가 운용 중인지 알려주지 않는다. 초기화 여부는 \code{invalid}의 존재로 표시되므로, 키가 없으면 False로 읽어야 한다. 아래 규칙에 맞는 포트폴리오가 정확히 1개가 아니면 래퍼는 추측하지 않고 멈춘다.
+
+\par\noindent\begin{minipage}{\linewidth}\fontsize{8.5}{11}\selectfont\ttfamily
+\hspace*{4mm}select\_pf(ctstId):\\
+\hspace*{8mm}cands $\leftarrow$ \{ pf $\in$ pfs : pf.ctstId = ctstId $\wedge$ $\neg$pf.invalid\\
+\hspace*{38mm}$\wedge$ pf.lastD $\geq$ currBizDay \}\\
+\hspace*{8mm}cands의 원소가 1개면 그것을 반환, 아니면 예외\end{minipage}\par\vspace{4pt}
+
+\lead{날짜 매개변수는 어떤 날짜든 받고, 어느 날의 데이터를 돌려줄지는 서버가 정한다(\figref{dates}).} 주말 날짜는 직전 거래일, 미래 날짜는 최근 거래일 데이터를 돌려주고, 대회가 끝난 뒤의 휴일은 0을 돌려준다. 모두 HTTP 200이다. 따라서 날짜별로 이력을 모으는 호출자는 각 날짜를 거래일 달력과 대조해야 한다. 그러지 않으면 같은 날 데이터가 여러 날짜로 저장된다. 래퍼 자체에는 이런 반복문이 없다.
+
+\input{figs_ko/dates.tex}
+
+\lead{일요일 응답에는 11월 20일 데이터가 들어 있다. 11월 23일 응답과는 포트폴리오에 하나 있는 소형주의 비중만 다르다.} 그 종목의 가격은 11월 23일에 변하지 않았지만(전일 종가와 종가 모두 14,840원), 포트폴리오 가치는 그날 3.59\% 떨어졌다. 가격이 그대로인 종목은 포트폴리오가 줄어들면 비중이 커지므로, 11월 20일 비중은 3.33\,×\,(1\,−\,0.0359) = 3.21\%여야 하고, 일요일 요청이 돌려준 값이 바로 이것이다.
+
+\lead{서버의 영업일은 자정 이후 몇 시간 동안 달력 날짜와 다르다.} 11월 24일 06:02:10에 \code{currBizDay}는 여전히 11월 23일이었고 07:06:44에는 11월 24일이었다. 즉 서버는 09:00 개장 전, 이 두 시각 사이에 다음 영업일로 넘어간다. 넘어가기 전에 보낸 요청에는 전날 날짜가 실린다.
+
+\lead{조회 엔드포인트 3개가 더 있어 주문 가능 시간, 투자 유니버스, 주문 이력을 준다(\figref{readeps}).} \code{Session}은 주문이 체결되는 시간인 09:00\textasciitilde 15:20을 돌려준다. 15:20은 장 마감 동시호가가 시작되는 시각이다. \code{Universe}는 투자 가능 종목 2,648개와 GICS 섹터를 나열한다. 일부 종목코드는 한국거래소의 새 코드 체계에 따라 문자와 숫자가 섞여 있으므로(\code{A0015M0}) 종목코드는 문자열로 다룬다. \code{Orders}는 날짜 범위 \code{d0}, \code{d1}을 받는다. 처음에 \code{d}를 보냈을 때는 11월 23일에 대해 빈 목록이 왔지만, 실시간 피드에는 그날 체결된 주문이 있었다. 장중에 웹 페이지가 직접 보낸 요청은 \code{d0}과 \code{d1}을 보냈고, 완료된 주문을 포함해 범위 안의 모든 주문을 받았다(\ref{sec:orders}절).
+
+\input{figs_ko/readeps.tex}
+\verdict{래퍼는 모든 요청의 날짜를 서버의 \code{currBizDay}로 채우며, \code{currBizDay}가 KST 달력 날짜와 다르면 주문을 거부한다(D6, D27). 포트폴리오는 위 규칙으로 고르고, 규칙에 맞는 포트폴리오가 없거나 둘 이상이면 멈춘다(D7).}

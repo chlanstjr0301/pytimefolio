@@ -1,0 +1,27 @@
+% Korean edition of sections/s4_1_tests.tex.
+\seclabel
+\claim{\secnum{4.1}{sec:wrappertests}\quad 시작, 피드, 매수, 매도는 동작했고, \code{plan()}에는 100\% 상한이 필요했다}
+
+\lead{\ref{sec:design}장의 설계로 만든 래퍼를 2026년 11월 24일 09:27\textasciitilde 09:55 KST에 실서버에서 실행했고, \ref{sec:oneshare}절의 내림 테스트는 10:26과 10:33에 했다.} 패키지 \code{pytimefolio}에는 \figref{modules}의 모듈이 들어 있다. 전략은 \code{client} 모듈의 클래스 \code{Timefolio} 하나를 쓴다(\figref{client}). 가격 인자(\code{**price})는 \code{limit_prc}, \code{limit_idx}, \code{stop_prc} 중 정확히 하나이며, \code{hm0}과 \code{hm1}은 선택이다(\figref{orderapi}).
+
+\input{figs_ko/client.tex}
+
+\lead{\code{async with} 블록에 들어가면 전략이 제어를 받기 전에 5단계가 실행된다.} 첫째, 클라이언트는 \code{session.json}에 저장된 쿠키 묶음으로 액세스 토큰을 갱신하고, 갱신이 실패할 때만 로그인한다(D17). 둘째, \ref{sec:queries}절의 규칙으로 포트폴리오를 고른다. 셋째, 실시간 피드를 백그라운드 태스크로 시작하고 첫 스냅샷을 최대 30\,s 기다린다. 오지 않으면 타임아웃으로 시작에 실패하므로 \code{weights()}가 빈 상태를 읽는 일은 없다. 이후 상태를 읽거나 주문을 넣는 모든 호출은 마지막 피드 응답이 26\,s(2 $\times$ 3\,s + 20\,s)보다 오래되면 \code{StaleFeed}를 던지므로, 낡은 비중을 쓰는 일도 없다. 넷째, \code{Universe}를 한 번 불러와 종목별 섹터를 익힌다(\ref{sec:guidelines}절). 다섯째, \code{Portfolio/Orders}에서 그날의 주문(새 주문과 정지)을 세고, 그 수와 자체 건수 파일 중 큰 값으로 하루 한도를 시작한다. 그래서 하루 중에 다시 시작해도 건수가 0으로 돌아가지 않는다. 블록을 나가면 피드 태스크를 취소하고 WebSocket과 HTTP 클라이언트를 닫으며, \code{Logout}은 호출하지 않는다(D16).
+
+\Needspace{3\baselineskip}\lead{각 모듈이 실서버 테스트를 통과했고, 오프라인 테스트 31개가 계산과 실서버에서 일으킬 수 없는 실패 경로를 다룬다(\figref{tests}).} 오프라인 테스트 중 9개는 순수 함수를 검사한다. 나머지 22개는 서버를 \code{httpx.MockTransport}와 가짜 객체로 대체해, 실서버가 원할 때 만들어 주지 않는 상황을 만든다. 오류 상태 코드별 응답, \code{AddOrder} 응답 유실, 재전송도 실패하는 경우, 핑만 보내는 피드, 낡은 피드, 동시 쓰기 3건(모의 서버에서 1.002\,s 간격), 연속된 같은 주문 2건, 주문 하나에 맞는 새 레코드 2개, 그리고 읽기나 쓰기에서 403이나 429를 받은 뒤 200이 오는 경우다. \figref{tests}의 주에 전체 목록이 있다. 31개 모두 push와 pull request마다 GitHub Actions에서 Python 3.11\textasciitilde 3.13으로 실행된다. \code{tests/live}의 실서버 검사는 CI에서 실행하지 않는다.
+
+\input{figs_ko/tests.tex}
+
+\lead{이 테스트 전 코드 리뷰에서 주문과 피드 경로의 결함 7개를 찾았고, 테스트를 돌린 코드에서는 7개 모두 고쳐져 있었다.} 고친 내용은 이미 설명한 동작들이다. (1) \code{wei}를 0.01\%로 한 번 반올림하고 보낸 값으로 대조, (2) 응답을 잃은 주문을 자동으로 다시 보내지 않고 쓰기와 검색 내내 잠금 하나 유지(\ref{sec:orders}절), (3) 26\,s 뒤 \code{StaleFeed}, (4) full-jitter 백오프로 재연결, (5) \code{bs_updated} 병합(\ref{sec:feed}절), (6) \code{plan()}에서 진행 중인 주문 빼기(\ref{sec:guidelines}절), (7) 정지를 포함하고 재시작에도 유지되는 하루 건수, 그리고 403이나 429 뒤 모든 쓰기 중단(\ref{sec:design}장)이다.
+
+\lead{매도 테스트로 매도를 보내는 방식이 정해졌다.} 래퍼의 \code{sell()}은 매수와 같은 \code{AddOrder} 본문에서 청산 코드만 E 대신 \code{ex} = X로 보내며, \code{ls}는 L 그대로다. 서버는 이를 받아들여 부호 \code{sgn} = −1(매도), \code{qty2ord} 2로 기록했다. 따라서 매도는 매수와 같은 방향 코드(\code{ls} = L)에 청산(\code{ex} = X)으로 보낸다. \ref{sec:orders}절의 주문은 모두 매수였으므로, 이 테스트로 양방향 모두 넣고, 피드에서 찾고, 정지해 본 셈이다.
+
+\lead{첫 \code{plan()} 테스트에서 합계가 100\%를 넘는 목표가 그대로 통과함을 발견했다.} water-filling은 한도에서 잘린 비중을 다른 종목으로 옮기고 합계는 유지하므로, 139\% 목표는 상한 적용 뒤에도 139\%였고 \code{plan()}은 자산의 139\%에 해당하는 포트폴리오를 요구할 뻔했다. 이제 \code{plan()}은 상한을 적용하기 전에 목표 합계가 \code{max_total}(기본 100\%)을 넘으면 \code{ValueError}를 던진다(D19).
+
+\lead{10:34 기준 그날 건수는 새 주문 9건과 정지 7건이었고, 래퍼 카운터는 80건 중 16건을 썼다.} \ref{sec:orders}절의 테스트가 주문 5건과 정지 3건을 썼고, 매수와 매도가 각각 2건씩, \ref{sec:oneshare}절의 내림 테스트가 각각 2건씩 더했다. \code{plan()}과 \code{guidelines()} 테스트는 아무것도 보내지 않았다. 취소가 100건에 포함되는지 주최측이 답할 때까지(\figref{openq}의 질문 Q2, \ref{sec:validity}절) 래퍼는 정지를 주문으로 센다. 따라서 래퍼 한도 아래로 64건이 남고, 주최측 기준 100건까지는 84건이 남는다.
+
+\lead{테스트는 G2와 G5를 보여주며, G1과 G3는 일부만, G4는 아직 확인하지 못했다(\figref{goalstatus}).} G1은 래퍼가 11월 30일까지 로그인 상태를 유지해야 하는데 테스트는 오전 한나절이었다. 두 번째 실행은 로그인 없이 저장된 쿠키 묶음으로 갱신했지만, 한 실행 안에서 720\,s를 넘겨 갱신한 프로세스나 7일 동안 돈 프로세스는 아직 없다. G2는 두 부분으로 판단한다. 병합 상태가 \code{t}가 같은 스냅샷과 15회 중 15회 일치한 것은 실서버에서 관찰했다(\ref{sec:feed}절). 26\,s보다 오래된 상태를 거부하는 것은 실제 장애를 일으키지 않았으므로 오프라인에서만 보였다. G3는 일부만 보였다. 15\,s 확인 시간은 1\textasciitilde 3\,s 안에 찾은 실제 매수에 근거하며 느린 서버에서는 시험하지 않았고, \code{plan()}은 실행 중의 비중이 아니라 계획 시점의 목표 비중을 검사하기 때문이다. G4, 즉 폴링이 주문을 늦추지 않는다는 목표는 아직 결과 측정 기준이 없다. 테스트는 피드와 주문이 이벤트 루프 하나를 공유한다는 것만 보여준다. G5는 실서버·오프라인 테스트를 모두 통과했다.
+
+\input{figs_ko/goalstatus.tex}
+
+\verdict{래퍼의 \code{plan()}은 합계가 100\%를 넘는 목표를 거부한다(D19). \code{sell()}은 실서버에서 확인한 대로 \code{ls} = L, \code{ex} = X로 보낸다(D21).}

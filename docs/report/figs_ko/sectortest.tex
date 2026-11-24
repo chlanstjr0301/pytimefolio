@@ -1,0 +1,8 @@
+% Korean edition of figs/sectortest.tex.
+\fig{sectortest}{\code{plan()}은 산업재 +6\%p를 거부하고 +3\%p를 받아들였다}[삼성전자 비중을 HD현대중공업으로 옮겨 바꾼 산업재 비중(\%, GICS 20, 한도 35.36\%). 2026년 11월 24일 09:55 KST]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{58mm} R{15mm} >{\RaggedRight\arraybackslash\leftskip=8pt}X}
+\thd{목표 변경} & \thd{산업재} & \thd{\code{plan()} 결과}\\
+없음(현재 비중) & 30.14 & 주문 0건\\\rowsep
+\hl 산업재 +6\%p, 삼성전자 $-$6\%p & 36.14 & \code{ValueError}: \texttt{20 36.14\% > 35.36\%}. 주문 없음\\\rowsep
+산업재 +3\%p, 삼성전자 $-$3\%p & 33.14 & 주문 2건: 삼성전자 3\% 매도 후 HD현대중공업 3\% 매수\\
+\end{tabularx}}}{음영 행: 거부된 목표. 삼성전자는 한도가 105.80\%인 섹터 45에 속하므로 한도를 넘을 수 있는 것은 산업재뿐이었다. 아무것도 보내지 않았다.}{DART Quant Team}

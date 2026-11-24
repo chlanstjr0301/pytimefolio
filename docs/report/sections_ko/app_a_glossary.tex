@@ -1,0 +1,49 @@
+% Korean edition of sections/app_a_glossary.tex.
+\par\Needspace{40mm}\seclabel
+\claim{부록 \secnum{A}{app:glossary}\quad 용어}
+{\tabfont\setlength{\LTleft}{0pt}\LTright=\dimexpr-\extrawide\relax plus 1fill\relax\setlength{\LTpre}{2pt}\setlength{\LTpost}{0pt}%
+\begin{longtable}{>{\RaggedRight\arraybackslash}p{36mm} >{\RaggedRight\arraybackslash}p{140mm}}
+\thd{용어} & \thd{이 보고서에서의 뜻}\\
+\endfirsthead
+\thd{용어} & \thd{이 보고서에서의 뜻 (계속)}\\
+\endhead
+액세스 토큰(access token) & 로그인과 갱신 때 받는 JWT. 모든 REST 요청과 실시간 피드 협상에 Bearer 토큰으로 보내며, 900\,s 동안 유효하다\\\rowsep
+\code{Accepted}, \code{Working}, \code{Done} & 피드 \code{ords}의 주문 상태. \code{Accepted}: 주문 직후(1회 관찰, 주문 1650719). \code{Working}: 시장에 나가 있으며 일부 체결됐을 수 있음. \code{Done}: 끝남(체결 또는 정지). 관찰한 순서: \code{Accepted}에서 \code{Done}, \code{Working}에서 \code{Done}. \code{Generated}와 \code{Deleted}는 관찰하지 못함\\\rowsep
+ALPN & 핸드셰이크 중에 클라이언트와 서버가 HTTP 버전을 합의하는 TLS 확장\\\rowsep
+Bearer 토큰 & \code{Authorization: Bearer <token>}으로 보내는 액세스 토큰. 가진 사람은 누구든 인증된다\\\rowsep
+\code{bs} & 포트폴리오 합계를 담은 피드 레코드: 순자산(\code{na}), 손익(\code{prft}), 수익률(\code{rt}), \code{nav}, 주식 금액(\code{stkAmt})\\\rowsep
+\code{bs_updated} & 모든 델타에 실려 오는 필드(10:33에 20개 중 20개)로, \code{bs}의 바뀐 값을 담는다: \code{prft}, \code{na}, \code{rt}, \code{nav}, \code{stkAmt}, 가끔 \code{pfStd}, \code{rank}. 래퍼는 이를 \code{bs}에 병합한다\\\rowsep
+시계 오차 허용치(clock skew) & 서버가 토큰의 시각을 자기 시계와 비교할 때 허용하는 오차. 여기서는 300\,s\\\rowsep
+\code{cmpl} & 이번 주 회전율(\code{currWto})과 주간 회전율 위반 횟수(\code{wtoViols})를 담은 피드 레코드\\\rowsep
+\code{cnclT} & 주문을 정지한 시각. 정지하지 않았으면 null. 정지한 주문도 \code{Done}으로 끝나므로, \code{cnclT}로 정지와 체결을 구분한다\\\rowsep
+쿠키 묶음(cookie jar) & 로그인 때 서버가 설정하는 모든 쿠키(\code{refreshToken} 포함). 로그인 7일 뒤 만료되며, 갱신해도 연장되지 않고, 저장한 사본은 \code{Logout} 뒤에도 계속 갱신된다. 래퍼는 이를 \code{~/.config/pytimefolio/session.json}에 권한 0600으로 저장한다\\\rowsep
+\code{cumQty} & 주문에서 지금까지 체결된 주식 수\\\rowsep
+\code{currBizDay} & 로그인과 갱신 때 받는 서버의 현재 영업일. 06:02\textasciitilde 07:07 사이에 넘어간다\\\rowsep
+델타(delta) & 클라이언트가 되돌려 보낸 \code{t}의 응답 이후 바뀐 것만 담은 실시간 피드 응답(\code{*_diff} 필드와 \code{bs_updated}). 비어 있을 수 있다\\\rowsep
+GICS 섹터 & 글로벌 산업 분류 기준(GICS)의 섹터 코드(예: 45 IT). \code{Universe}, \code{pos}, \code{msecs}에 \code{sec}로 실린다\\\rowsep
+JWT & JSON Web Token. 서명된 토큰으로, 클레임(\code{exp}, \code{iat} 등)은 키 없이도 읽을 수 있다\\\rowsep
+Keep-alive & 요청 사이에 TCP 연결을 열어 두어 이후 요청이 연결 설정을 건너뛰게 하는 것\\\rowsep
+\code{lastT}, \code{t} & \code{t}는 서버가 응답에 찍는 스탬프. \code{lastT}는 델타를 요청하려고 클라이언트가 되돌려 보내는 스탬프\\\rowsep
+\code{limitIdx} & 주문의 상대 가격(호가 단위): 상대 호가 쪽 $n$, 주문 자신의 호가 쪽 $-n$ ($n$은 1\textasciitilde 10)\\
+\rowsep
+로그인 세션 & 로그인 한 번이 만드는 서버 측 세션으로, 쿠키 묶음이 쥐고 있다. 7일간 유지되며 로그인할 때마다 하나씩 늘어난다\\\rowsep
+\code{msecs} & 피드의 GICS 섹터별 시장 비중. 섹터 한도의 기준\\\rowsep
+\code{na} & 피드 \code{bs}에 있는 포트폴리오 순자산(원). 1주 비중의 분모\\\rowsep
+\code{nav} & 래퍼가 쓰지 않는 \code{bs} 필드로, 순자산이 아니다. 메서드 \code{nav()}는 \code{na}를 돌려준다\\\rowsep
+협상(negotiate) & SignalR의 첫 HTTP 요청. 연결 토큰과 제공하는 전송 방식을 돌려준다\\\rowsep
+널 응답(null reply) & 인자가 \code{null}인 실시간 피드 응답(주문 직후 1회 관찰). 래퍼는 스냅샷을 요청해 대응한다. 빈 델타와 달리 델타 필드가 없다\\\rowsep
+\code{pfId} & 포트폴리오 ID. 한 계정은 대회 참가와 초기화마다 하나씩 가진다\\\rowsep
+포지션 레코드 & 스냅샷 \code{pos}의 항목 하나. 키 28개: \code{Id}, \code{avgPrc}, \code{bPrc}, \code{bQty}, \code{chPct}, \code{close}, \code{ctstNm}, \code{d}, \code{div}, \code{fee}, \code{pfId}, \code{pos}, \code{posYd}, \code{prcYd}, \code{prft}, \code{prftKrw}, \code{prodId}, \code{prodNm}, \code{rstr}, \code{sPrc}, \code{sQty}, \code{sec}, \code{tax}, \code{userNick}, \code{userNm}, \code{wei}, \code{weiLimit}, \code{yWei}\\\rowsep
+\%p & 퍼센트포인트. 두 백분율의 차이(12\%에서 15\%는 3\%p)\\\rowsep
+\code{qty2ord} & 주문이 요구하는 주식 수. 서버가 \code{wei}로 계산하며 정수 주식 수로 내림한다\\\rowsep
+갱신(renewal) & 쿠키 묶음으로 \code{POST /api/Auth/SilentRefresh}를 호출해 새 액세스 토큰을 받는 것\\\rowsep
+RTT & 왕복 시간(round-trip time). 서버로 메시지 하나를 보내고 돌아오는 시간\\\rowsep
+SignalR & ASP.NET 서버와 클라이언트 사이 실시간 메시징을 위한 Microsoft 라이브러리. 여기서는 WebSocket 위에서 동작한다\\\rowsep
+소형주(small cap) & 시가총액 1조 원 미만 종목. 피드 \code{tags}에 \code{SmallCap}으로 표시된다\\\rowsep
+스냅샷(snapshot) & 전체 상태(\code{bs}, \code{ords}, \code{pos}, \code{msecs}와 작은 최상위 필드 5개)를 담은 실시간 피드 응답. 클라이언트가 되돌려 보낸 \code{t}가 없거나 맞지 않을 때 온다\\\rowsep
+정지(stop) & \code{CancelOrderBatch}로 진행 중인 주문을 취소하는 것(스톱 가격 \code{stopPrc}와는 무관). 정지한 주문은 \code{cnclT}가 설정된 채 \code{Done}으로 끝나며, 정지한 주문 ID마다 하루 한도에 포함된다\\\rowsep
+장중(trading session) & 09:00\textasciitilde 15:20 KST. 주문이 체결되는 시간\\\rowsep
+회전율(turnover) & 포트폴리오 대비 주간 매매 비율(\%). 대회는 매주 5\% 이상을 요구한다\\\rowsep
+\code{wei} & 순자산(\code{na}) 대비 비중(\%, 9는 9\%). 포지션에서는 현재 비중, 주문에서는 주문 크기이며, 래퍼는 0.01\% 단위로 맞춘다\\\rowsep
+\code{weiLimit} & 종목 비중의 상한(\%). 삼성전자 40, 나머지 15\\
+\end{longtable}}

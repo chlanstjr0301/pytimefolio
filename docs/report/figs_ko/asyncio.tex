@@ -1,0 +1,118 @@
+% Korean edition of figs/asyncio.tex.
+% Gantt block: \tfgb{y}{x0}{x1}{fill}{text colour}{label}
+\providecommand{\tfgb}[6]{\fill[#4] (#2,#1-2) rectangle (#3,#1+2);
+  \node[font=\fontsize{7}{8.4}\selectfont,text=#5,inner sep=0pt] at ({(#2+#3)/2},#1) {#6};}
+\fig[wide]{asyncio}{스레드 하나가 코루틴을 번갈아 실행하며, 토큰 잠금은 그중 하나만 갱신하게 한다}[\code{rebalance()}가 주문 2건을 넣고 \code{guidelines()}가 함께 실행되는 동안 이벤트 루프의 간트 차트]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  f/.style={font=\fontsize{7}{8.4}\selectfont},
+  lane/.style={f,anchor=east,align=right,text=navy},
+  note/.style={f,text=greyD,inner sep=0.5pt},
+  ptitle/.style={font=\fontsize{7.5}{9}\selectfont\bfseries,text=navy,anchor=west},
+  ev/.style={-{Stealth[length=1.4mm]},line width=0.5pt,navyM,dashed}]
+% ====================================================== panel (a): 0 to 145 ms, 1 mm per ms
+\node[ptitle] at (-30,8) {(a) 처음 145\,ms: 한 번에 코루틴 하나만 실행된다. G는 다시 갱신하지 않고 토큰 잠금을 기다린다};
+\node[lane] at (-2,0)   {\textbf{이벤트 루프}\\{\color{greyD}스레드 하나}};
+\node[lane] at (-2,-9)  {\textbf{피드 태스크}\\{\color{greyD}\code{hub.stream()}}};
+\node[lane] at (-2,-21) {\textbf{코루틴 R}\\{\color{greyD}\code{rebalance()}}};
+\node[lane] at (-2,-32) {\textbf{코루틴 G}\\{\color{greyD}\code{guidelines()}}};
+\node[lane] at (-2,-42) {\textbf{토큰 잠금}\\{\color{greyD}\code{Auth._lock}}};
+\node[lane] at (-2,-51) {\textbf{주문 잠금}\\{\color{greyD}\code{Orders._place_lock}}};
+\begin{scope}
+% event loop strip
+\draw[greyM,line width=0.4pt] (0,-2) rectangle (145,2);
+\tfgb{0}{0}{3}{navy}{white}{R}     \tfgb{0}{3}{6}{navy}{white}{G}
+\tfgb{0}{35}{38}{navy}{white}{R}   \tfgb{0}{38}{41}{navy}{white}{G}
+\tfgb{0}{70}{73}{navy}{white}{R}   \tfgb{0}{73}{76}{navy}{white}{G}
+\tfgb{0}{105}{108}{navy}{white}{R} \tfgb{0}{140}{143}{navy}{white}{R}
+\foreach \a/\b in {6/35,41/70,76/105,108/140} {\node[note] at ({(\a+\b)/2},0) {유휴};}
+% feed task
+\tfgb{-9}{0}{145}{navyL}{navy}{피드 요청 사이 \code{sleep(3)}. 다음 요청은 패널 (b)에}
+% coroutine R
+\tfgb{-21}{0}{3}{navy}{white}{}
+\tfgb{-21}{3}{35}{navyM}{white}{\code{SilentRefresh}}
+\tfgb{-21}{35}{38}{navy}{white}{}
+\tfgb{-21}{38}{70}{navyM}{white}{\code{Orders} (다시 세기)}
+\tfgb{-21}{70}{73}{navy}{white}{}
+\tfgb{-21}{73}{105}{navyM}{white}{\code{ValidateProduct}}
+\tfgb{-21}{105}{108}{navy}{white}{}
+\tfgb{-21}{108}{140}{navyM}{white}{\code{AddOrder}}
+\tfgb{-21}{140}{143}{navy}{white}{}
+\fill[navyL] (143,-23) rectangle (145,-19);
+\draw[decorate,decoration={brace,amplitude=1.2mm},navy,line width=0.5pt] (0,-18.3) -- (36.5,-18.3);
+\node[f,text=navy,anchor=south west] at (0,-17.3) {토큰이 720\,s보다 오래됨: 잠금, 재확인, 갱신};
+\draw[decorate,decoration={brace,amplitude=1.2mm},navy,line width=0.5pt] (105,-18.3) -- (108,-18.3);
+\node[f,text=navy,anchor=south east] at (145,-17.3) {쓰기 관문: 직전 쓰기 후 최소 1\,s, 오늘 80건 미만};
+% coroutine G
+\tfgb{-32}{3}{6}{navy}{white}{}
+\tfgb{-32}{6}{38}{greyM}{navy}{잠금 대기}
+\tfgb{-32}{38}{41}{navy}{white}{}
+\tfgb{-32}{41}{73}{navyM}{white}{\code{Violations}}
+\tfgb{-32}{73}{76}{navy}{white}{}
+\node[note,anchor=north west] at (3,-34.3) {토큰 갱신 시점, 잠금 사용 중};
+\node[note,anchor=north west] at (38,-34.3) {잠금 안에서 재확인: 토큰이 이미 새것, 두 번째 갱신 없음};
+\node[note,anchor=west] at (77,-32) {반환};
+% token lock
+\tfgb{-42}{0}{36.5}{navy}{white}{R이 보유}
+\node[note,anchor=west] at (38,-42) {비어 있음. G가 들어왔다 바로 나감};
+% place lock
+\tfgb{-51}{70}{145}{navy}{white}{검사부터 쓰기와 찾기까지 R이 보유}
+% axis
+\draw[greyD,line width=0.4pt] (0,-54.6) -- (145,-54.6);
+\foreach \t in {0,35,70,105,140} {\draw[greyD,line width=0.4pt] (\t,-54.6) -- (\t,-55.6); \node[f,text=greyD,anchor=north] at (\t,-55.6) {\t};}
+\node[f,text=greyD,anchor=north west] at (0,-58.8) {R과 G가 함께 시작한 뒤의 ms. 요청은 32\,ms로 그림(측정 31\textasciitilde 39\,ms). 진한 조각은 3\,ms 폭으로 그림};
+\end{scope}
+% ====================================================== panel (b): 0 to 10 s, 12 mm per s
+\begin{scope}[yshift=-77mm]
+\node[ptitle] at (-30,9) {(b) 처음 10\,s: 주문마다 피드 상태에서 찾아 확인한다. 쓰기 관문이 주문 2건의 간격을 벌린다};
+\def\s{12}
+\node[lane] at (-2,0)   {\textbf{피드 태스크}\\{\color{greyD}\code{hub.stream()}}};
+\node[lane] at (-2,-12) {\textbf{코루틴 R}\\{\color{greyD}\code{rebalance()}}};
+\node[lane] at (-2,-26) {\textbf{주문 잠금}};
+% feed: sleeping, with request-reply slivers
+\fill[navyL] (0,-2) rectangle (10*\s,2);
+\foreach \t/\l in {1.88/{응답이 주문 1 추가},4.88/{응답이 주문 2 추가},7.88/{응답}} {
+  \fill[navyM] (\t*\s-0.4,-2) rectangle (\t*\s+0.4,2);
+  \node[f,anchor=south,text=navy] at (\t*\s,2.3) {\l};}
+\foreach \t in {0.4,3.38,6.38} {\node[f,text=navy] at (\t*\s+5,0) {\code{sleep(3)}};}
+\node[f,text=navy] at (8.88*\s+5,0) {\code{sleep(3)}};
+% R lane
+\fill[navy] (0,-14) rectangle (0.14*\s+0.6,-10);
+\fill[navyL] (0.14*\s+0.6,-14) rectangle (2.14*\s,-10);
+\fill[navy] (2.14*\s,-14) rectangle (2.25*\s+0.6,-10);
+\fill[navyL] (2.25*\s+0.6,-14) rectangle (5.25*\s,-10);
+\foreach \t in {0.64,1.14,1.64,2.75,3.25,3.75,4.25,4.75} {\draw[white,line width=0.7pt] (\t*\s,-14) -- (\t*\s,-10);}
+\node[f,text=navy,anchor=west] at (5.25*\s+1.5,-12) {\code{rebalance()}가 주문 ID 2개를 반환};
+% found markers and causal arrows
+\foreach \t/\r in {2.14/1.88,5.25/4.88} {
+  \fill[navy] (\t*\s,-9.6) -- ++(-1.1,1.8) -- ++(2.2,0) -- cycle;
+  \draw[ev] (\r*\s,-2.2) -- (\t*\s,-7.6);}
+\node[f,text=navy,anchor=west] at (2.14*\s+1.5,-6.6) {주문 1 찾음(2.0\,s)};
+\node[f,text=navy,anchor=west] at (5.25*\s+1.5,-6.6) {주문 2 찾음(3.0\,s)};
+% annotations below R
+\draw[decorate,decoration={brace,amplitude=1.2mm,mirror},greyD,line width=0.5pt] (0.14*\s,-15) -- (1.14*\s,-15);
+\node[note,anchor=north west,align=left] at (0,-16.8) {주문 1 보냄.\\관문 1\,s 닫힘};
+\node[note,anchor=north west,align=left] at (2.14*\s-0.5,-15.4) {주문 2 보냄:\\관문 열림(2.1\,s)};
+\node[note,anchor=north west,align=left] at (5.25*\s+1.5,-15.4) {흰 눈금: R이 최대 15\,s 동안 0.5\,s마다 \code{hub.state}를 보고,\\다음으로 REST \code{Orders}를 본다. 둘 다 없으면 R은\\\code{AmbiguousState}를 던지며 주문을 다시 보내지 않는다};
+% place lock
+\fill[navy] (0.07*\s,-28) rectangle (2.14*\s,-24);
+\fill[navy] (2.14*\s,-28) rectangle (5.25*\s,-24);
+\draw[white,line width=0.7pt] (2.14*\s,-28) -- (2.14*\s,-24);
+\node[f,text=white] at ({(0.07+2.14)/2*\s},-26) {주문 1};
+\node[f,text=white] at ({(2.14+5.25)/2*\s},-26) {주문 2: 검사, 쓰기, 찾기};
+% axis
+\draw[greyD,line width=0.4pt] (0,-31) -- (10*\s,-31);
+\foreach \t in {0,...,10} {\draw[greyD,line width=0.4pt] (\t*\s,-31) -- (\t*\s,-32); \node[f,text=greyD,anchor=north] at (\t*\s,-32) {\t};}
+\node[f,text=greyD,anchor=north] at (5*\s,-35.2) {R 시작 후 경과 시간(s)};
+\end{scope}
+% ====================================================== legend
+\begin{scope}[yshift=-120mm]
+\foreach \c/\x in {navy/0,navyM/34,greyM/64,navyL/96} {\fill[\c] (\x,0) rectangle ++(3.5,2.4);}
+\node[f,anchor=west] at (4.3,1.2) {스레드에서 실행 중};
+\node[f,anchor=west] at (38.3,1.2) {응답 대기};
+\node[f,anchor=west] at (68.3,1.2) {잠금 대기};
+\node[f,anchor=west] at (100.3,1.2) {잠자기 또는 상태 확인};
+\fill[navy] (1.75,-2.6) -- ++(-1.1,1.8) -- ++(2.2,0) -- cycle; \node[f,anchor=west] at (4.3,-1.7) {주문 ID 찾음};
+\draw[ev] (34,-1.7) -- (37.5,-1.7); \node[f,anchor=west] at (38.3,-1.7) {피드 응답이 \code{hub.state}를 바꿈};
+\fill[navy] (96,-2.9) rectangle ++(3.5,2.4); \node[f,anchor=west] at (100.3,-1.7) {잠금 보유(잠금 줄)};
+\end{scope}
+\end{tikzpicture}}{잠금 줄에서 남색은 ‘보유’를 뜻한다. 측정값: Python 요청은 31\textasciitilde 39\ms{}가 걸리고(\ref{sec:transport}절), 주문은 \code{AddOrder} 후 1\textasciitilde 3\,s 만에 피드에 나타났다. 래퍼 설정: 3\,s마다 피드 요청, 0.5\,s마다 상태 확인, 쓰기 사이 1\,s, 하루 80건, 서버 시계로 720\,s 이후 첫 호출에서 갱신. 예시용: 시작 시각, 코루틴 순서, 피드 응답 시각은 측정 범위 안에서 골랐다. 간트 형식은 Silberschatz 외[7]를 따랐다. 패널 (b)에서 괄호 안 시간은 주문을 보낸 때부터 찾은 때까지, 그리고 마지막 쓰기가 끝난 때부터 다음 쓰기까지다.}{DART Quant Team; 코드는 \code{src/pytimefolio} (\code{auth}, \code{orders}, \code{hub})}

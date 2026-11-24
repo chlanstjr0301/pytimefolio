@@ -1,0 +1,20 @@
+% Korean edition of sections/app_c_authors.tex.
+\par\Needspace{60mm}\seclabel
+\claim{부록 \secnum{C}{app:authors}\quad 저자 정보와 공시}
+\lead{두 저자는 모두 경북대학교 학부생이며 DART 회원이다.}
+
+\vspace{4pt}
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{28mm} >{\RaggedRight\arraybackslash}p{48mm} >{\RaggedRight\arraybackslash}X}
+\thd{저자} & \thd{전공} & \thd{복수전공·부전공}\\
+Choi Munseok & 식품자원경제학 & 컴퓨터학(복수전공), 수학(부전공)\\\rowsep
+Choi Yeayun & 컴퓨터학 & Business Intelligence(복수전공)\\
+\end{tabularx}}
+\vspace{6pt}
+
+\lead{저자 진술.} 이 보고서의 측정, 코드, 결론은 저자들 자신의 것이다. 저자들은 각자의 참가자 계정으로 Road to Fund Manager 13회차에 참가하고 있으며, 이 보고서의 모든 요청은 그 계정 중 하나에서 보냈다. 다른 참가자의 계정 데이터는 요청하지 않았다.
+
+\lead{보고서의 성격.} DART는 경북대학교 금융 데이터 사이언스 동아리다. 이 보고서는 2026년 11월 24일에 관찰한 웹 서비스의 문서화되지 않은 동작에 관한 학술적 연구이며, 투자 조언이 아니고 어떤 증권도 추천하지 않는다. 저자들은 타임폴리오자산운용과 관계가 없다. 타임폴리오는 API를 공개하지 않으며, 이 보고서나 패키지를 검토하거나 보증하지 않았다. 주최측은 2026년 11월 24일 이메일로 자동 주문을 금지하지 않으며, 하루 100건 이상 주문하는 IP 주소는 차단될 수 있고, 트래픽 폭주도 차단으로 이어질 수 있다고 밝혔다[5].
+
+\lead{패키지 사용.} \code{pytimefolio}는 보증 없이 MIT 라이선스로 공개된다[8]. 이를 쓰는 사람은 누구나 대회 규칙과 주최측 한도를 따라야 한다. 래퍼 자체의 한도, 즉 하루 최대 80건과 쓰기 사이 최소 1\,s는 완화하지 말아야 한다. 80건 한도는 주최측 기준인 100건보다 낮고, 1\,s 간격은 요청 사이에 지연을 두라는 주최측 권고를 따른 것이다(수치는 명시되지 않았다).
+
+\lead{데이터 출처.} 모든 데이터는 저자들이 \code{contest.timefolio.net}에 보낸 요청에서 나왔다. \figref{setup}은 테스트 환경이다. 측정 스크립트 대부분은 저장소의 \code{research/} 폴더에, 래퍼 검사는 \code{tests/live/}에 있다. \ref{sec:transport}절의 curl 시간 측정은 curl의 \code{-w} 타이머를 썼고, 3\,s 폴링은 2026년 10월 28일 브라우저 기록에서 나왔다.

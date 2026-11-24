@@ -1,0 +1,39 @@
+% Korean edition of main.tex. Build with XeLaTeX from docs/report:  xelatex main_ko && xelatex main_ko
+\documentclass[9pt]{article}
+\usepackage{dart-ko}
+\usetikzlibrary{arrows.meta,positioning,calc,patterns,decorations.pathreplacing,shapes.geometric}
+% ---------------------------------------------------------------- cover strings
+\newcommand{\covertitle}{pytimefolio}
+\AtBeginDocument{\hypersetup{pdftitle={pytimefolio: Road to Fund Manager 대회용 Python API 래퍼},pdfauthor={Choi Munseok; Choi Yeayun}}}
+\newcommand{\covertitlelines}{1}
+\newcommand{\coversubtitle}{Road to Fund Manager 대회 자동매매를 위한 API 래퍼}
+% ---------------------------------------------------------------- local helpers
+\newcommand{\seclabel}{\par\Needspace{9\baselineskip}\vspace{6pt}}
+\newcommand{\tabfont}{\fontsize{7.5}{9.6}\selectfont\hyphenpenalty=10000\exhyphenpenalty=10000\relax}
+\newcommand{\code}[1]{{\ttfamily\detokenize{#1}}}
+\newcommand{\verdict}[1]{\par\vspace{2pt}\noindent{\setlength{\fboxsep}{3pt}\colorbox{navyXL}{\parbox{\dimexpr\linewidth-6pt}{\fontsize{8.5}{11.5}\selectfont\RaggedRight\textbf{\color{navy}설계 결정:} #1}}}\par\vspace{2pt}}
+\newcommand{\hl}{\rowcolor{navyXL}}
+\newcommand{\ms}{\,ms}
+\setlength{\tabcolsep}{3pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\arraystretch}{1.12}
+\begin{document}
+\input{sections_ko/s0_cover.tex}
+\input{sections_ko/s1_intro.tex}
+\input{sections_ko/s2_0_parent.tex}
+\input{sections_ko/s2_1_transport.tex}
+\input{sections_ko/s2_2_auth.tex}
+\input{sections_ko/s2_3_queries.tex}
+\input{sections_ko/s2_4_feed.tex}
+\input{sections_ko/s2_5_orders.tex}
+\input{sections_ko/s3_design.tex}
+\input{sections_ko/s4_0_parent.tex}
+\input{sections_ko/s4_1_tests.tex}
+\input{sections_ko/s4_2_oneshare.tex}
+\input{sections_ko/s4_3_guidelines.tex}
+\input{sections_ko/s4_4_validity.tex}
+\input{sections_ko/app_a_glossary.tex}
+\input{sections_ko/app_b_decisions.tex}
+\input{sections_ko/app_c_authors.tex}
+\input{sections_ko/references.tex}
+\end{document}

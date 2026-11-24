@@ -1,0 +1,10 @@
+% Korean edition of figs/replysizes.tex.
+\fig{replysizes}{델타는 개장 전 스냅샷의 1/17, 장중에는 약 1/8이다}[응답 유형과 시간대별 \code{ReceivePortfolio} 응답 하나의 크기(바이트). 2026년 11월 24일, 3\,s마다 폴링]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X R{26mm} R{50mm} R{14mm}}
+\thd{시점} & \thd{스냅샷 (\code{lastT=0})} & \thd{델타 (\code{t} 정확히 되돌림)} & \thd{비율}\\
+\rowsep
+개장 전 (09:00 이전) & 9,915 & 577 (빈 델타) & 17\\
+\rowsep
+장중 & 11,344 & 1,053\textasciitilde 1,912 (평균 약 1,400) & 약 8\\
+\end{tabularx}}
+}{스냅샷은 잔고(\code{bs}), 주문(\code{ords}), 포지션(\code{pos}), 시장 섹터 비중(\code{msecs}) 전체와 작은 최상위 필드 5개를 담는다. 델타에서는 그 4개 필드가 \code{null}이고, \code{pos_diff}, \code{ords_diff}, \code{msecs_diff}가 추가·삭제·변경된 레코드를, \code{bs_updated}가 바뀐 잔고 필드를 싣는다. 개장 전에는 아무것도 바뀌지 않으므로 델타가 비어 있다. 장중에는 \code{pos_diff.updated}가 응답마다 보유 종목 23개 중 8\textasciitilde 23개를 담았고, 이것이 델타 크기의 범위를 정한다. 비율 = 스냅샷 크기 ÷ 델타 크기(장중은 평균 델타).}{실시간 피드에 연결한 Python 클라이언트, DART Quant Team}

@@ -1,0 +1,11 @@
+% Korean edition of figs/paths.tex.
+\fig{paths}{래퍼의 REST 경로는 5개 영역으로 나뉘며, 굵은 경로는 실제로 호출했다}[웹 클라이언트 코드에서 뽑은 주요 REST 경로, 경로의 첫 부분으로 묶음]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{16mm} >{\RaggedRight\arraybackslash}X}
+\thd{영역} & \thd{경로 (일부)}\\
+\code{Auth} & \textbf{\code{Login}}, \textbf{\code{SilentRefresh}}, \textbf{\code{Logout}}\\\rowsep
+\code{Portfolio} & 주문: \textbf{\code{AddOrder}}, \code{ModifyOrder}, \code{CancelOrder}, \code{DeleteOrder}, \textbf{\code{CancelOrderBatch}}, \textbf{\code{ValidateProduct}}, \code{OrderLogs}, \textbf{\code{Orders}}\\
+ & 상태: \textbf{\code{PfBs}}, \textbf{\code{Session}}, \textbf{\code{Trades}}, \code{Fills}, \code{FillAggrs}, \textbf{\code{Universe}}, \textbf{\code{Violations}}, \code{ViolationsSummary}, \code{PerfCharts}\\\rowsep
+\code{Contest} & \code{List}, \code{PfList}, \code{TopRankDetail}, \code{TopPick}\\\rowsep
+\code{Analysis} & \code{PfAsOf}, \code{PrftByProd}, \code{HistPosChart}, \code{TrendChart}, \code{ActivityChart}\\\rowsep
+\code{Util} & \code{SearchProducts}\\
+\end{tabularx}}}{전체 경로는 영역과 이름을 이은 것이다(예: \code{Portfolio/Orders}). 굵은 글씨: 2026년 11월 24일 실제로 호출함(\code{PfBs}는 404, \figref{readeps}). 보통 글씨: 클라이언트 코드에서만 읽음. 주문 경로의 요청 본문은 \figref{orderapi}에 있다.}{웹 클라이언트 코드, DART Quant Team}

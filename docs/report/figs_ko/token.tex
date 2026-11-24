@@ -1,0 +1,46 @@
+% Korean edition of figs/token.tex.
+\fig[wide]{token}{서버는 만료 후 300\,s 동안 액세스 토큰을 받아주며, 열린 WebSocket은 토큰보다 오래 산다}[2026년 11월 24일 세 테스트를 각 액세스 토큰의 만료 시점(x = 0)에 맞춰 정렬: 서버 시계로 08:16:43에 발급된 토큰의 REST 요청, 07:21:41 KST에 만료된 토큰의 WebSocket 하나, 05:38:54 로그인에서 설정된 갱신 쿠키]{%
+\begin{tikzpicture}[x=6mm,y=1mm,lab/.style={font=\fontsize{7}{8.4}\selectfont},lane/.style={font=\fontsize{7.5}{9}\selectfont\bfseries,anchor=east,text width=24mm,align=right}]
+% ---- lane labels
+\node[lane] at (-15.25,0) {REST 요청};
+\node[lane] at (-15.25,-17) {열린 WebSocket};
+\node[lane] at (-15.25,-31) {갱신 쿠키};
+% ---- expiry line
+\draw[navy,dashed,line width=0.5pt] (0,-36) -- (0,15.5);
+\node[lab,anchor=south east] at (-0.1,12.2) {만료};
+% ---- lane 1: REST
+\fill[navy] (-15,-2.5) rectangle (0,2.5);
+\fill[navyL] (0,-2.5) rectangle (4.95,2.5);
+\fill[pattern=north east lines,pattern color=navyM] (4.95,-2.5) rectangle (5.1167,2.5);
+\draw[navyM,line width=0.3pt] (4.95,-2.5) rectangle (5.1167,2.5);
+\fill[navyXL] (5.1167,-2.5) rectangle (9,2.5);
+\node[lab,text=white] at (-7.5,0) {유효: 발급 후 900\,s};
+\node[lab] at (2.475,0) {허용};
+\node[lab,text=greyD] at (7.06,0) {거부};
+\node[lab,anchor=south west,text=greyD] at (-15,2.8) {발급};
+% 200 and 401 marks
+\fill[navy] (4.95,6) circle (0.75mm); \draw[greyM,dashed,line width=0.3pt] (4.95,5.2) -- (4.95,2.5);
+\node[lab,anchor=east] at (4.75,6) {+4:57에 200};
+\draw[navy,line width=0.8pt] ($(5.1167,11)+(-0.8mm,-0.8mm)$) -- ($(5.1167,11)+(0.8mm,0.8mm)$) ($(5.1167,11)+(-0.8mm,0.8mm)$) -- ($(5.1167,11)+(0.8mm,-0.8mm)$);
+\draw[greyM,dashed,line width=0.3pt] (5.1167,10) -- (5.1167,2.5);
+\node[lab,anchor=west] at (5.35,11) {+5:07에 401};
+% tolerance bracket (timeout style)
+\draw[greyD,line width=0.4pt] (0,-4) -- (0,-5) -- (5,-5) -- (5,-4);
+\node[lab,anchor=north,text=greyD] at (2.5,-5.2) {허용치 300\,s};
+% ---- lane 2: WebSocket replies, one tick per reply
+\draw[greyM,line width=0.3pt] (-11.42,-17) -- (9,-17);
+\foreach \i in {0,...,381}{\draw[navy,line width=0.25pt] ({-11.42+\i*0.05052},-19) -- ({-11.42+\i*0.05052},-15);}
+\node[lab,anchor=south west] at (-11.42,-14.6) {응답마다 눈금 1개, 3\,s마다 폴링};
+\node[lab,anchor=south east] at (7.83,-14.6) {끝까지 응답 382개};
+\draw[navy,line width=0.9pt] ($(8.3167,-17)+(-1mm,-1mm)$) -- ($(8.3167,-17)+(1mm,1mm)$) ($(8.3167,-17)+(-1mm,1mm)$) -- ($(8.3167,-17)+(1mm,-1mm)$);
+\node[lab,anchor=north east,align=right] at (9.2,-19.6) {07:30(+8:19) 새 협상,\\ 같은 토큰: 401};
+% ---- lane 3: refresh cookie
+\fill[navyM] (-15,-33) rectangle (9,-29);
+\draw[navyM,line width=1pt,-{Stealth[length=2mm]}] (9,-31) -- (10.1,-31);
+\node[lab,text=white,anchor=west] at (-14.7,-31) {로그인 때 설정, 7일 뒤인 12월 1일 05:38:54 KST에 만료. 갱신해도 만료는 그대로};
+% ---- axis
+\draw[greyM,line width=0.4pt] (-15,-38) -- (9,-38);
+\foreach \m/\t in {-15/−15,-12/−12,-9/−9,-6/−6,-3/−3,0/0,3/+3,6/+6,9/+9}{\draw[greyM] (\m,-38) -- (\m,-39); \node[lab,text=greyD,anchor=north] at (\m,-39) {\t};}
+\node[lab,text=greyD,anchor=north] at (-3,-42.2) {액세스 토큰 만료 후 경과 시간(분)};
+\end{tikzpicture}
+}{음영: 남색은 액세스 토큰이 유효한 구간, 연한 남색은 만료됐지만 받아주는 구간, 빗금은 REST 거부 시점이 있는 10초 구간, 옅은 색은 REST 요청이 거부되는 구간이다. 허용치 경계는 WebSocket 테스트와 다른 토큰으로 한 두 번째 테스트에서 나왔으며 그 토큰의 만료 시점 기준으로 배치했다. PC 시계가 3\,s 빨랐으므로 시간은 서버의 \code{Date} 헤더로 쟀다. 401에는 \code{www-authenticate: Bearer error="invalid_token", error_description="The token expired at ..."}(UTC)가 실려 있었다. WebSocket 눈금 하나는 같은 연결의 응답 하나이며, 눈금 위치는 테스트 스크립트가 1분마다 남긴 첫 로그 줄과 마지막 로그 줄 사이에 고르게 배치했다. X는 거부된 요청이다. 쿠키 만료는 갱신 전후의 \code{Set-Cookie}에서 읽었다.}{DART Quant Team}

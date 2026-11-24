@@ -1,0 +1,86 @@
+% Korean edition of figs/timing.tex.
+
+\fig[wide]{timing}{새 연결은 106.5\ms, 재사용 연결은 16.0\ms{}가 든다}[\code{Portfolio/Violations}에 보낸 curl 요청 하나, 10회의 중앙값(재사용 요청 40개). 시간은 아래로 흐르며 두 패널의 축척은 같다]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  f/.style={font=\fontsize{7}{8.2}\selectfont},
+  host/.style={font=\fontsize{7}{8.2}\selectfont\bfseries,text=navy,anchor=south,align=center},
+  tl/.style={greyM,line width=0.6pt,dotted,-{Stealth[length=1.4mm]}},
+  msg/.style={-{Stealth[length=1.6mm]},line width=0.7pt,navy},
+  rep/.style={-{Stealth[length=1.6mm]},line width=0.7pt,navyM},
+  ml/.style={f,text=navy,sloped,above,inner sep=0.6pt},
+  stg/.style={line width=0.5pt,navy},
+  sl/.style={f,anchor=east,align=right,text=navy},
+  ptitle/.style={font=\fontsize{7.5}{9}\selectfont\bfseries,text=navy,anchor=west}]
+\def\tT#1{-0.72*(#1)}% time in ms -> y in mm (0.72 mm per ms, both panels)
+% ============================================ panel (a): new connection
+\def\Rx{0}\def\Cx{22}\def\Sx{58}
+\node[ptitle] at (-24,14) {(a) 새 연결: 요청 전에 DNS, TCP, TLS를 거친다};
+\node[host] at (\Rx,2.5) {DNS\\리졸버};
+\node[host] at (\Cx,2.5) {클라이언트\\(curl)};
+\node[host] at (\Sx,2.5) {서버\\(nginx)};
+\foreach \x in {\Rx,\Cx,\Sx} {\draw[tl] (\x,1) -- (\x,{\tT{110}});}
+% DNS: the split inside the 49.3 ms is not measured; arrows drawn one-way 3 ms
+\draw[msg] (\Cx,{\tT{0}}) -- node[ml]{A 질의} (\Rx,{\tT{3}});
+\fill[navyXL] (\Rx-1,{\tT{3}}) rectangle (\Rx+1,{\tT{46.3}});
+\draw[rep] (\Rx,{\tT{46.3}}) -- node[ml]{A 응답} (\Cx,{\tT{49.3}});
+% TCP: one RTT
+\draw[msg] (\Cx,{\tT{49.3}}) -- node[ml]{SYN} (\Sx,{\tT{54.85}});
+\draw[rep] (\Sx,{\tT{54.85}}) -- node[ml,pos=0.78,fill=white,inner sep=0.6pt]{SYN-ACK} (\Cx,{\tT{60.4}});
+% TLS 1.3: one RTT, then the rest of curl's TLS time on the client
+\draw[msg] (\Cx,{\tT{60.4}}) -- node[ml,pos=0.66]{ACK, ClientHello} (\Sx,{\tT{65.95}});
+\draw[rep] (\Sx,{\tT{65.95}}) -- node[ml,below,fill=white,inner sep=0.6pt,pos=0.35]{ServerHello ... Finished} (\Cx,{\tT{71.5}});
+\fill[navyXL] (\Cx-1,{\tT{71.5}}) rectangle (\Cx+1,{\tT{89.3}});
+\node[f,anchor=west,text=greyD,align=left] at (\Cx+1.8,{\tT{81.4}}) {curl TLS 시간의 나머지};
+% request to first byte
+\draw[msg] (\Cx,{\tT{89.3}}) -- node[ml]{Finished, \code{HEADERS} (요청)} (\Sx,{\tT{94.85}});
+\fill[navyXL] (\Sx-1,{\tT{94.85}}) rectangle (\Sx+1,{\tT{100.45}});
+\node[f,anchor=west,text=greyD] at (\Sx+1.8,{\tT{97.65}}) {서버};
+\draw[rep] (\Sx,{\tT{100.45}}) -- node[ml,below,inner sep=0.4pt]{\code{HEADERS} 200, \code{DATA}} (\Cx,{\tT{106}});
+% stage brackets (left)
+\draw[stg] (-3+1,{\tT{0}-0.2}) -- ++(-1,0) -- (-3,{\tT{49.3}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{24.65}}) {DNS 조회\\\textbf{49.3}\ms\\{\color{greyD}WSL에}\\{\color{greyD}DNS 캐시 없음}};
+\draw[stg] (-3+1,{\tT{49.3}-0.2}) -- ++(-1,0) -- (-3,{\tT{60.4}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{54.85}}) {TCP \textbf{11.1}\ms\\= 왕복 1회};
+\draw[stg] (-3+1,{\tT{60.4}-0.2}) -- ++(-1,0) -- (-3,{\tT{89.3}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{74.85}}) {TLS 1.3 \textbf{28.9}\ms\\{\color{greyD}핸드셰이크 왕복 1회,}\\{\color{greyD}Python에서 12.4\ms}};
+\draw[stg] (-3+1,{\tT{89.3}-0.2}) -- ++(-1,0) -- (-3,{\tT{106}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{97.65}}) {요청에서 첫 바이트까지\\\textbf{16.7}\ms};
+\draw[stg] (\Sx+12,{\tT{0}}) -- ++(1,0) -- (\Sx+13,{\tT{106}}) -- ++(-1,0);
+\node[f,text=navy,rotate=-90,anchor=south] at (\Sx+14.5,{\tT{53}}) {합계 \textbf{106.5}\ms{} (합계의 중앙값, 단계별 중앙값의 합은 106.0\ms)};
+% ============================================ panel (b): reused connection
+\def\Cb{94}\def\Sb{126}
+\node[ptitle] at (\Cb-8,14) {(b) 재사용 연결: 요청만 보낸다};
+\node[host] at (\Cb,2.5) {클라이언트\\(curl)};
+\node[host] at (\Sb,2.5) {서버\\(nginx)};
+\foreach \x in {\Cb,\Sb} {\draw[tl] (\x,1) -- (\x,{\tT{24}});}
+\draw[msg] (\Cb,{\tT{0}}) -- node[ml]{\code{HEADERS} (요청)} (\Sb,{\tT{5.55}});
+\fill[navyXL] (\Sb-1,{\tT{5.55}}) rectangle (\Sb+1,{\tT{10.45}});
+\draw[rep] (\Sb,{\tT{10.45}}) -- node[ml,below,inner sep=0.4pt]{\code{HEADERS} 200, \code{DATA}} (\Cb,{\tT{16}});
+\draw[stg] (\Cb-3+1,{\tT{0}-0.2}) -- ++(-1,0) -- (\Cb-3,{\tT{16}+0.2}) -- ++(1,0);
+\node[sl] at (\Cb-4.6,{\tT{8}}) {\textbf{16.0}\ms};
+\node[f,anchor=north west,align=left,text=navy] at (\Cb-6,{\tT{24}-2}) {왕복 1회(11.1\ms)와 서버에서 약 5\ms:\\열린 연결 위의 새 HTTP/2 스트림};
+% run-to-run spread strip: min to max over 10 runs (40 for reused), tick = median; 0.18 mm per ms
+\begin{scope}[shift={(\Cb+14,{\tT{24}-17})}]
+\def\s{0.16}
+\node[f,anchor=south west,font=\fontsize{7}{8.2}\selectfont\bfseries,text=navy] at (-20,1.6) {회차별 분포, 최솟값\textasciitilde 최댓값(ms)};
+\foreach \lab/\lo/\md/\hi/\r in {DNS/36.6/49.3/94.1/0, TCP/9.4/11.1/12.3/1, TLS/17.8/28.9/40.4/2, 첫 바이트까지/15.7/16.7/19.8/3, {합계, 새 연결}/80.5/106.5/156.9/4, {합계, 재사용}/14.8/16.0/20.3/5} {
+  \pgfmathsetmacro{\yy}{-3.9*\r}
+  \node[f,anchor=east,text=navy] at (-0.8,\yy) {\lab};
+  \draw[navyL,line width=1.8pt] ({\s*\lo},\yy) -- ({\s*\hi},\yy);
+  \draw[navy,line width=1pt] ({\s*\md},\yy-1.3) -- ({\s*\md},\yy+1.3);
+  \node[f,anchor=west,text=greyD] at ({\s*160+0.8},\yy) {\lo{}\textasciitilde\hi};
+}
+\draw[greyM,line width=0.4pt] (0,-21.5) -- ({\s*160},-21.5);
+\foreach \t in {0,50,100,150} {\draw[greyM,line width=0.4pt] ({\s*\t},-21.5) -- ({\s*\t},-22.3); \node[f,anchor=north,text=greyD] at ({\s*\t},-22.3) {\t};}
+\end{scope}
+% legend and scale bar
+\begin{scope}[shift={(-24,{\tT{110}-6})}]
+\draw[msg] (0,0) -- (7,0); \node[f,anchor=west] at (8,0) {클라이언트에서 서버로};
+\draw[rep] (32,0) -- (39,0); \node[f,anchor=west] at (40,0) {응답};
+\fill[navyXL] (54,-1.2) rectangle (56,1.2); \node[f,anchor=west] at (57,0) {로컬 작업};
+\draw[greyD,line width=0.6pt] (78,{-0.72*5}) -- (78,{0.72*5});
+\foreach \t in {-5,5} {\draw[greyD,line width=0.6pt] (77.2,{0.72*\t}) -- (78.8,{0.72*\t});}
+\node[f,anchor=west,text=greyD] at (79.5,0) {두 패널 모두 10\ms};
+\end{scope}
+\end{tikzpicture}%
+}{편도 시간은 TCP 왕복(RTT) 11.1\ms{}의 절반으로 그렸다. 측정한 것은 단계 경계뿐이다. curl의 \code{time_*} 값은 누적값이며, 단계는 인접한 값의 차이다. ‘요청에서 첫 바이트까지’는 curl TLS 단계의 끝에서 응답 첫 바이트까지다. DNS 조회와 curl TLS 단계 내부의 세부 구간은 측정하지 않았다. 라벨은 중앙값이고, 띠는 10회(재사용 요청 40개)의 범위이며 눈금이 중앙값이다. 요청 50개 모두 HTTP 200을 받았다. 2026년 11월 24일 06:03 KST. 시간-공간 그림은 Kurose와 Ross[6]의 형식을 따랐다.}{DART Quant Team}

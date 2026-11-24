@@ -1,0 +1,28 @@
+% Korean edition of sections/s4_3_guidelines.tex.
+\seclabel
+\claim{\secnum{4.3}{sec:guidelines}\quad \code{plan()}은 목표의 섹터 한도 초과를 거부하고, \code{guidelines()}는 나머지 한도를 보고한다}
+
+\lead{대회에는 투자 가이드라인 4개가 있고, 서버가 주문 시점에 강제하는 것은 종목 한도뿐이다(\figref{guiderules}).} 서버는 종목을 종목 한도(\code{weiLimit})보다 높게 만들 주문을 막는다. 한도는 삼성전자 40\%, 나머지 종목 15\%다. 섹터 한도는 max(2 $\times$ \code{msecs}의 시장 섹터 비중, 10\%)다. 섹터와 소형주 초과는 \code{Portfolio/Violations} 응답에 위반으로 세기만 하며, 피드의 준수 레코드(\code{cmpl})에 이번 주 회전율이 있다. 회전율은 매주 5\% 이상이어야 한다. 주간 위반은 3회까지 허용되며, 4회 이상이면 포트폴리오가 순위와 시상에서 제외된다. 한도는 대회 사이트의 가이드라인 페이지에서 가져왔다.
+
+\lead{가이드라인에 쓰는 값은 주요 필드 4개 외의 작은 피드 필드 5개와 서버의 \code{Violations} 응답에서 나온다(\figref{guiderules}).} 스냅샷에는 \code{bs}, \code{pos}, \code{ords}, \code{msecs} 외에 \code{bm}, \code{bs_updated}, \code{cmpl}, \code{noPosPrcs}, \code{tags}가 있다. \code{state} 모듈은 이 필드들을 받은 그대로 보관하고, 델타에서 null이 아닌 값이 오면 덮어쓴다. 모든 델타에 있는 \code{bs_updated}는 \code{bs}에 병합하므로 순자산(\code{na})이 최신으로 유지된다(\ref{sec:feed}절). \code{tags}는 종목코드별로 종목에 라벨을 붙이고, \code{msecs}는 GICS 섹터마다 레코드 \code{Id}, 섹터 코드 \code{sec}, 시장 비중 \code{wei}를 가진 레코드 하나를 둔다. \code{Violations} 응답은 서버 자체의 집계를 세 부분(\code{Current}, \code{Cumulative}, \code{Details})으로 준다. 회전율 필드는 없으므로 회전율은 \code{cmpl}에서만 얻는다.
+
+\input{figs_ko/guiderules.tex}
+
+\Needspace{4\baselineskip}\lead{\code{guidelines()}는 두 출처를 응답 하나로 합치며, \code{ok} 플래그는 현재 위반 0건과 이번 주 회전율 5\%를 요구한다.} 응답에는 \code{weiLimit}까지 여유가 가장 적은 종목 5개, 보유한 모든 섹터의 비중·한도·여유(\figref{sectors}), 소형주 합계, \code{cmpl}의 회전율 값, 서버의 \code{Violations} 응답 원본이 들어 있다. \code{ok}는 서버가 센 현재 위반이 0건이고 이번 주 회전율이 5\% 이상일 때만 True다(D25).
+
+\input{figs_ko/sectors.tex}
+
+\lead{화요일 09:52 기준 이번 주 회전율은 4.8\%로 최소 5\%에 못 미쳤으므로, \code{Portfolio/Violations}가 현재 한도 위반 0건을 보고했는데도 \code{ok}는 False였다.} \code{cmpl.currWto}는 4.8\%였다. 회전율은 따로 센다. \code{cmpl.wtoViols}는 주간 회전율 위반 1회로, 규칙이 허용하는 3회 안이었다. 래퍼는 이 숫자를 보고만 하며, 무엇을 언제 거래할지는 전략에 맡긴다(N2).
+
+\lead{시장 섹터 비중을 \code{msecs} 레코드 \code{Id}로 찾자 IT가 한도를 35.74\%p 넘은 것으로 나왔는데, 서버의 \code{SectViolCnt}는 0이었다.} 첫 버전의 \code{guidelines()}는 레코드 \code{Id}를 섹터로 썼다. 레코드 \code{Id} 1에는 섹터 10이 들어 있으므로 섹터 45를 찾으면 시장 비중이 나오지 않았고, 한도가 하한인 10\%로 떨어져 45.74\%인 IT가 한도를 넘은 것처럼 보였다. 섹터 코드 \code{sec}로 찾으면 IT 한도는 105.80\%다. 서버의 집계 0이 결함을 드러냈다.
+
+\lead{\code{plan()}은 주문을 만들기 전에 모든 목표를 대회 규칙과 대조한다.} 순서대로 다음과 같다. 목표 합계가 \code{max_total}(100\%)을 넘으면 \code{ValueError}를 던진다. 목표 종목마다 \code{weiLimit}로 상한을 두고 초과분은 water-filling으로 다른 종목에 옮긴다. 유니버스 밖 종목이 있으면 예외를 던진다. 섹터 합계가 max(2 $\times$ 시장 비중, 10\%)를 넘으면 예외를 던진다. 마지막 검사는 \code{orders} 모듈의 \code{sector_violations()}다(D23). 그다음 진행 중인 주문의 남은 크기를 빼고 1주 비중보다 작은 주문을 뺀다(\ref{sec:oneshare}절). 매도로 매수 자금을 마련할 수 있도록 매도를 매수보다 앞에 둔다. 이 검사들은 계획 시점의 목표 비중에 적용된다. 주문이 체결되는 동안 비중을 한도 안에 붙잡아 두지는 않는다. 먼저 보낸 매도가 먼저 체결된다는 보장이 없으므로(7주가 7분 37초에 걸쳐 체결됨, \ref{sec:orders}절), 리밸런싱 중에 섹터나 합계가 잠시 한도를 넘을 수 있다(Q4, \ref{sec:validity}절). 보유하지 않은 종목은 \code{pos} 레코드가 없어 피드에 \code{weiLimit}도 없으므로, \code{plan()}은 가이드라인 값인 15\%(삼성전자 40\%)로 상한을 둔다. 주문을 보내기 전 검사도 같은 상한을 적용해 이를 넘길 매수를 거부한다. 종목별 섹터는 클라이언트가 시작할 때 한 번 불러오는 \code{Universe}(2,648종목)에서, 시장 비중은 호출할 때마다 \code{msecs}에서 가져온다.
+
+\lead{서버는 섹터 초과를 비중이 움직인 뒤에야 집계로만 알려주므로 래퍼가 섹터를 직접 검사한다.} \code{plan()}은 목표를 거부하고 초과분을 그대로 둔다. 종목에 대해 water-filling이 하듯 섹터 초과분을 나누면 그 섹터의 모든 종목을 낮추고 다른 모든 종목을 올리게 되며, 바뀐 종목마다 하루 80건 중 1건을 쓴다. 오류는 섹터, 합계, 한도를 알려주므로 호출자가 목표를 고칠 수 있다(\figref{sectortest}).
+
+\input{figs_ko/sectortest.tex}
+
+\lead{산업재 한도는 09:52에 35.40\%, 09:55에 35.36\%였으므로 \code{plan()}은 호출할 때마다 모든 섹터 한도를 피드에서 읽는다.} \code{msecs}의 시장 비중은 약 12\,s마다 바뀌므로(\ref{sec:feed}절), 한 번 저장한 한도는 서버의 한도와 어긋나게 된다.
+
+\lead{래퍼는 보유하지 않은 종목의 시가총액을 모르므로 소형주 규칙은 보고만 한다.} \code{tags}는 포트폴리오가 보유한 소형주 1종목에만 라벨을 붙였다. 따라서 목표에 새 소형주가 있어도 피드로는 알아볼 수 없고, 시장 데이터는 래퍼 밖에 둔다(N1). 30\% 한도 대비 3.35\%로 여유는 26.65\%p였다.
+\verdict{\code{plan()}은 주문을 만들기 전에 합계 100\% 초과, 유니버스 밖 종목, 호출 때마다 피드에서 읽은 섹터 한도 초과를 거부한다. 이 검사는 주문이 체결되는 동안이 아니라 계획 시점의 목표 비중을 다룬다(D19, D23). \code{guidelines()}는 나머지 한도를 서버의 \code{Violations} 응답과 함께 보고하며, \code{ok}는 현재 위반 0건이고 이번 주 회전율이 5\% 이상일 때만 True다(D25).}

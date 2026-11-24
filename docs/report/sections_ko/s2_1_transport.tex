@@ -1,0 +1,29 @@
+% Korean edition of sections/s2_1_transport.tex.
+\seclabel
+\claim{\secnum{2.1}{sec:transport}\quad HTTP/2 연결 하나를 재사용하면 요청 시간이 106.5\ms{}에서 16.0\ms{}로 준다}
+
+\lead{사이트는 TLS 1.3 위에서 HTTP/2를 제공하며 HTTP/3는 알리지 않는다.} TLS 핸드셰이크는 ALPN으로 HTTP/2를 고르고, 암호 스위트는 \code{TLS_AES_256_GCM_SHA384}, 인증서 체인은 Let's Encrypt의 인증서 4개다. 응답에는 서버가 HTTP/3(QUIC)를 알릴 때 쓰는 \code{alt-svc} 헤더가 없다. HTTP/3가 없다는 판단은 이 헤더가 없다는 사실에만 근거하며, UDP 443 포트는 확인하지 않았다.
+
+\lead{nginx 프런트엔드가 요청을 ASP.NET 애플리케이션으로 넘긴다.} 요청 본문이 잘못되면 nginx 고유의 HTML 오류 페이지가 나온다(\ref{sec:auth}절). 애플리케이션의 오류 메시지와 SignalR 허브로 프레임워크를 식별했다. \ref{sec:auth}절과 \ref{sec:feed}절에서 인용하는 ASP.NET 기본값은 이 식별에 근거한다.
+
+\lead{REST 요청은 HTTP/2 연결 하나를 공유하고, 실시간 피드는 두 번째 연결이 필요하다(\figref{layers}).} REST 요청 하나는 \code{Authorization: Bearer} 헤더를 실은 HTTP/2 스트림 하나로 전달된다. 이후 요청은 같은 연결에 새 스트림을 열어 DNS, TCP, TLS를 건너뛴다. 실시간 피드는 협상(negotiate)용 HTTP/2 POST로 시작한 뒤, 두 번째 연결을 열고 HTTP/1.1 \code{Upgrade: websocket} 요청으로 업그레이드한다. 이 두 번째 연결은 서버가 강제한다. 클라이언트가 HTTP/2 위로 WebSocket을 실으려면 서버가 먼저 \code{ENABLE_CONNECT_PROTOCOL} 설정을 보내야 하는데[1], 서버의 HTTP/2 SETTINGS 프레임에 이 설정이 없다. 따라서 브라우저를 포함한 모든 클라이언트가 피드용 연결을 따로 연다.
+
+\input{figs_ko/layers.tex}
+
+\lead{새 연결은 106.5\ms{}, 재사용 연결은 16.0\ms{}가 걸리므로 첫 요청에서 연결 설정에 약 90\ms{}가 든다.} 같은 엔드포인트(\code{Portfolio/Violations})로 curl 한 번 실행에 요청 5개를 연달아 보냈고(1회에 약 170\ms), 이를 1\,s 간격으로 10회 반복했다. 각 회의 첫 요청은 DNS 조회, TCP 연결, TLS 핸드셰이크 비용을 치르고 나머지 4개는 연결을 재사용한다(\figref{timing}). 단계별 중앙값의 합은 106.0\ms{}이고, 합계의 중앙값 106.5\ms{}는 다른 회에서 나온다.
+
+\input{figs_ko/timing.tex}
+\input{figs_ko/pytimings.tex}
+
+\lead{\figref{timing}은 유효한 토큰으로 다시 측정한 결과만 쓴다. 만료된 토큰으로 한 이전 측정은 재사용 요청이 12.2\ms{}까지 빨라서 제외했다.} 그 측정은 상태 코드를 기록하지 않았고, 12.2\ms{}는 데이터에 손대기 전에 토큰을 거부하는 서버와 맞아떨어진다. 재측정에서는 모든 요청의 상태 코드를 기록했다.
+
+
+\lead{재사용 요청 비용은 네트워크 왕복 1회(11.1\ms)에 양 끝에서 쓰는 약 5\ms{}를 더한 값이다.} curl의 TCP 단계는 SYN 세그먼트를 보낸 때부터 SYN-ACK을 받을 때까지로, 클라이언트와 서버 사이 왕복 1회에 해당한다. 중앙값은 11.1\ms{}, 10회의 표준편차는 0.9\ms{}로 네트워크 경로가 안정적이었다. 재사용 연결의 요청도 요청을 보내고 응답을 받는 왕복 1회가 필요하다. 따라서 16.0\ms{} 중 11.1\ms{}는 네트워크 시간이고, 약 5\ms{}는 서버와 클라이언트가 함께 쓴 시간이다. 둘은 분리하지 않았다. 클라이언트 코드를 빠르게 해도 이 5\ms{}의 일부만 줄일 수 있다.
+
+\lead{새 연결의 두 단계는 서버보다 우리 클라이언트 환경을 더 반영한다.} WSL에서는 curl 측정 때 새 연결마다 DNS 조회에 37\textasciitilde 94\ms{}(중앙값 49.3\ms)가 들었고, 별도의 Python 측정에서는 조회당 30\textasciitilde 39\ms{}가 들었다. 1\,s 간격의 조회가 빨라지지 않았으므로 경로상 어떤 캐시도 응답하지 않았다. 캐싱 리졸버가 있는 시스템이라면 조회 비용을 한 번만 낼 것이다. 그래도 래퍼는 호스트 이름으로 연결한다. 인증서가 \code{contest.timefolio.net}을 이름으로 담고 있어서, IP 주소로 연결하면 조회는 아끼지만 호스트 이름 검증을 잃는다. curl의 TLS 28.9\ms{}에는 curl 자체의 TLS 초기화도 들어 있다. 열린 TCP 연결 위에서 Python으로 잰 TLS 1.3 핸드셰이크 자체는 왕복 1회인 12.4\ms{}였다.
+
+\lead{Python 클라이언트에서는 프로세스의 첫 요청이 1.2\textasciitilde 1.3\,s, 재사용 요청이 31\textasciitilde 39\ms{}였다(\figref{pytimings}).} 장중에 잰 재사용 값은 개장 전에 잰 curl의 16.0\ms{}의 약 두 배다. 두 측정은 클라이언트, 시각, 장중 부하가 모두 다르며 이 원인들을 분리하지 않았다. 1.2\textasciitilde 1.3\,s는 거의 전부 일회성 모듈 로딩과 SSL 초기화다(가상환경이 Windows 드라이브에 있다). 같은 프로세스에서 만든 두 번째 클라이언트는 새 연결에 130\ms{}만 썼다. 따라서 일회성 비용은 프로세스에 딸려 오고, Python에서 새 연결 비용은 약 130\ms{}다. 래퍼는 시작할 때 \code{warm_up()}을 호출해 \code{Portfolio/Session}(주문 가능 시간, \ref{sec:queries}절)에 가벼운 GET 하나를 보내고 그 401은 무시한다. 그래서 일회성 비용을 첫 주문 전에 치른다(D18).
+
+\lead{간격마다 한 번씩 시험한 결과, 서버의 유휴 연결 종료 시점은 15\textasciitilde 30\,s 사이다.} httpx는 기본으로 5\,s 유휴 후 연결을 끊기 때문에[4] 첫 시도에서는 서버의 동작이 가려졌다. 이 한도를 600\,s로 올리자 5\,s, 15\,s 침묵 뒤에는 연결이 재사용됐고 30\,s 뒤에는 새 연결로 바뀌었다. 간격마다 한 번만 시험했으므로 종료 시점은 연결마다 다를 수 있다. HTTP/2 서버는 보통 GOAWAY 프레임으로 유휴 종료를 알리고, 클라이언트는 다음 요청 때 새 연결을 연다. 프레임은 캡처하지 않았으므로 이 메커니즘은 관찰이 아니라 가정이다. GOAWAY가 오는 도중에 요청을 보낼 때만 요청이 닫힌 소켓을 만난다. 이 경합에 걸린 GET은 한 번 더 보내지만, 서버가 받았을 수 있는 주문은 다시 보내지 않으므로(\ref{sec:orders}절) 래퍼가 서버보다 먼저 유휴 연결을 닫는다.
+
+\verdict{래퍼는 프로세스가 살아 있는 동안 \code{httpx.AsyncClient(http2=True)} 하나를 유지한다. \code{keepalive_expiry}는 10\,s로 둔다. 연결이 여전히 재사용된 가장 긴 유휴 시간인 15\,s보다 짧으므로, 서버보다 래퍼가 먼저 유휴 연결을 닫는다(D1, D2). 직전 요청 후 10\,s 안의 요청은 연결을 재사용하고, 그보다 긴 간격 뒤에는 새 연결을 연다(Python에서 약 130\ms). 주문 직전에는 사전 검사의 \code{ValidateProduct} GET(\ref{sec:guidelines}절)이 연결을 다시 열어 두므로, \code{AddOrder} 자체는 열린 연결로 나간다.}

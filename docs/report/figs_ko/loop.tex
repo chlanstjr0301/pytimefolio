@@ -1,0 +1,35 @@
+% Korean edition of figs/loop.tex.
+% Pseudocode of Hub.stream / poll_once / assert_fresh in pytimefolio/hub.py, comments beside the code.
+\fig[wide]{loop}{수신 루프는 요청을 하나만 보내 두고, 오류가 나면 다시 연결해 스냅샷부터 시작한다}[\code{hub.py}의 실시간 피드 루프 의사코드와 단계별 이유]{%
+{\fontsize{7.6}{9.8}\selectfont
+\newcommand{\cm}[1]{\leavevmode{\rmfamily\color{greyD}#1}}%
+\newcommand{\I}[1]{\hspace*{#1mm}}%
+\begin{tabular}{@{}>{\ttfamily\raggedright\arraybackslash}p{104mm} >{\RaggedRight\arraybackslash}p{70mm}@{}}
+poll(hub):                                                   & \\
+\I{4}n $\leftarrow$ 0; lastReply $\leftarrow$ never         & \cm{n은 연속 실패 횟수}\\
+\I{4}loop:                                                   & \\
+\I{8}try:                                                    & \\
+\I{12}if not connected:                                      & \\
+\I{16}negotiate; open WebSocket; handshake                   & \cm{토큰이 720\,s보다 오래됐거나 거부되면 먼저 갱신(\ref{sec:auth}절)}\\
+\I{16}lastT $\leftarrow$ 0                                   & \cm{새 연결은 스냅샷부터 시작}\\
+\I{12}send(RequestPortfolio(lastT, d = currBizDay, pfId))   & \\
+\I{12}p $\leftarrow$ await receive(deadline = send + 20\,s)   & \cm{요청은 하나만. 핑은 마감을 늘리지 않음}\\
+\I{12}if p = null: lastT $\leftarrow$ 0                      & \cm{널 응답: 상태 유지, 다음 응답은 스냅샷}\\
+\I{12}elif p.pos $\neq$ null: state $\leftarrow$ p; lastT $\leftarrow$ p.t & \cm{스냅샷: 상태 교체}\\
+\I{12}else: merge(state, p); lastT $\leftarrow$ p.t          & \cm{델타: 병합. \code{t}는 되돌리기만 하고 계산에 쓰지 않음}\\
+\I{12}lastReply $\leftarrow$ now; n $\leftarrow$ 0           & \cm{아래 신선도 검사용으로 기록}\\
+\I{8}except BlockedError:                                     & \cm{협상에서 403이나 429: 쓰기는 이미 중단됨}\\
+\I{12}close WebSocket; raise                                 & \cm{피드 태스크 종료, 재연결 없음}\\
+\I{8}except any other error:                                 & \cm{502, 401, 잘못된 JSON, 타임아웃, 닫힌 소켓}\\
+\I{12}close WebSocket; n $\leftarrow$ n + 1                  & \\
+\I{12}await sleep(uniform(0, min(30, 2$^{\mathrm{n}}$)))       & \cm{full-jitter 백오프, 최대 30\,s. 그다음 재연결}\\
+\I{12}continue                                               & \\
+\I{8}await sleep(3)                                          & \cm{응답마다 3\,s 뒤 다시 요청}\\[3pt]
+merge(state, p):                                             & \\
+\I{4}for each diff in p.pos\_diff, p.ords\_diff, p.msecs\_diff: & \\
+\I{8}add diff.added; drop diff.removed                       & \\
+\I{8}for (i, f) in diff.updated: state[int(i)] $\mid$= f     & \cm{바뀐 필드만. 키는 문자열로 된 레코드 \code{Id}}\\
+\I{4}state.bs $\mid$= p.bs\_updated                          & \cm{순자산(\code{na})을 최신으로 유지}\\[3pt]
+assertFresh():                                               & \cm{읽기, 주문, \code{wait()} 전에 호출}\\
+\I{4}if now $-$ lastReply > 2 $\times$ 3 + 20 = 26\,s: raise StaleFeed & \cm{폴링 2회 누락과 20\,s 응답 타임아웃}\\
+\end{tabular}}}{\code{updated}의 키는 문자열로 온 레코드 \code{Id}이고 스냅샷의 \code{Id}는 정수이므로 \code{int(i)}로 바꾼다. $\mid$=는 바뀐 필드의 딕셔너리를 저장된 레코드에 병합한다. 20\,s 마감은 요청마다 한 번 정하므로, 서버가 15\,s마다 보내는 핑이 잃어버린 응답을 계속 기다리게 만들 수 없다. \code{uniform(0, x)}는 0과 \code{x}초 사이에서 균등하게 대기 시간을 뽑고, 성공하면 n을 0으로 되돌린다. 토큰 갱신은 지연 방식이다. 피드는 연결하거나 다시 연결할 때만 토큰을 요청하며, 열린 WebSocket은 토큰이 만료돼도 계속 동작한다(\figref{token}). 두 번째 연결에서 받은 \code{t}가 같은 스냅샷과 15회 비교한 테스트에서 병합한 \code{pos}와 \code{ords} 레코드는 매회 필드 단위로 일치했다(\ref{sec:feed}절).}{\code{pytimefolio/hub.py} v0.1.0, DART Quant Team}
