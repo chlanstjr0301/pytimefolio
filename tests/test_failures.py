@@ -186,13 +186,30 @@ class OrdersGateTest(unittest.TestCase):
         self.assertEqual(od.used_today(), 0)
 
     def test_blocked_halts_all_writes(self):
-        od, _ = self.make(lambda r: httpx.Response(429))
-        with self.assertRaises(BlockedError):
-            run(od._write("AddOrder", {}))
-        self.assertIsNotNone(od.halted)
-        od.r.a.t._client._transport = httpx.MockTransport(lambda r: httpx.Response(200, json={}))
-        with self.assertRaises(BlockedError):            # 서버가 다시 받아 줘도 래퍼는 멈춘 상태
-            run(od._write("AddOrder", {}))
+        for code in (403, 429):
+            with self.subTest(code=code):
+                od, _ = self.make(lambda r, c=code: httpx.Response(c))
+                with self.assertRaises(BlockedError):
+                    run(od._write("AddOrder", {}))
+                self.assertIsNotNone(od.halted)
+                od.r.a.t._client._transport = httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+                with self.assertRaises(BlockedError):    # 서버가 다시 받아 줘도 래퍼는 멈춘 상태
+                    run(od._write("AddOrder", {}))
+
+    def test_writes_spaced_at_least_1s(self):
+        """기본 간격(1 s)으로 쓰기 3건을 동시에 요청해도 서버에 닿는 시각이 1 s 이상 벌어진다."""
+        stamps = []
+        def h(req):
+            stamps.append(time.monotonic())
+            return httpx.Response(200, json={})
+        hub = FakeHub()
+        od = Orders(FakeRest(FakeAuth(h)), hub)          # min_interval 기본값 1.0
+        async def go():
+            await asyncio.gather(*(od._write("AddOrder", {}) for _ in range(3)))
+        run(go())
+        gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+        self.assertEqual(len(stamps), 3)
+        self.assertTrue(all(g >= 0.99 for g in gaps), gaps)
 
     def test_lost_reply_is_not_resent(self):
         n = {"add": 0}
