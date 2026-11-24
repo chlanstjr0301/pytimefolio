@@ -15,6 +15,9 @@ import random
 import time
 from typing import AsyncIterator
 
+import ssl
+
+import certifi
 import websockets
 
 from .auth import Auth
@@ -24,6 +27,8 @@ from .state import PortfolioState
 log = logging.getLogger("pytimefolio.hub")
 RS = "\x1e"
 WS_URL = "wss://contest.timefolio.net/hubs/main"
+# httpx 처럼 certifi 인증서를 쓴다. python.org macOS Python 은 기본 CA 가 비어 있어 검증에 실패한다
+SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
 
 class Hub:
@@ -41,7 +46,7 @@ class Hub:
         ctoken = r.json()["connectionToken"]
         tok = await self.a.token()               # negotiate 가 401 로 갱신을 일으켰을 수 있으므로 그 뒤에 읽는다
         self.ws = await websockets.connect(f"{WS_URL}?id={ctoken}",
-                                           additional_headers={"Authorization": f"Bearer {tok}"},
+                                           additional_headers={"Authorization": f"Bearer {tok}"}, ssl=SSL_CTX,
                                            max_size=2 ** 22, ping_interval=None)   # SignalR 자체 ping(type 6)을 쓴다
         await self.ws.send(json.dumps({"protocol": "json", "version": 1}) + RS)
         hs = json.loads((await asyncio.wait_for(self.ws.recv(), 10)).split(RS)[0])
