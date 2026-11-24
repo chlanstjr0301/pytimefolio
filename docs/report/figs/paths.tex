@@ -1,0 +1,11 @@
+% OWNER: figs/paths.tex. Edit only this file.
+\fig{paths}{The wrapper's REST paths fall in 5 areas; bold paths were called}[Main REST paths extracted from the web client's code, grouped by their first path segment]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{16mm} >{\RaggedRight\arraybackslash}X}
+\thd{Area} & \thd{Paths (selection)}\\
+\code{Auth} & \textbf{\code{Login}}, \textbf{\code{SilentRefresh}}, \textbf{\code{Logout}}\\\rowsep
+\code{Portfolio} & Orders: \textbf{\code{AddOrder}}, \code{ModifyOrder}, \code{CancelOrder}, \code{DeleteOrder}, \textbf{\code{CancelOrderBatch}}, \textbf{\code{ValidateProduct}}, \code{OrderLogs}, \textbf{\code{Orders}}\\
+ & State: \textbf{\code{PfBs}}, \textbf{\code{Session}}, \textbf{\code{Trades}}, \code{Fills}, \code{FillAggrs}, \textbf{\code{Universe}}, \textbf{\code{Violations}}, \code{ViolationsSummary}, \code{PerfCharts}\\\rowsep
+\code{Contest} & \code{List}, \code{PfList}, \code{TopRankDetail}, \code{TopPick}\\\rowsep
+\code{Analysis} & \code{PfAsOf}, \code{PrftByProd}, \code{HistPosChart}, \code{TrendChart}, \code{ActivityChart}\\\rowsep
+\code{Util} & \code{SearchProducts}\\
+\end{tabularx}}}{A full path joins area and name, e.g.\ \code{Portfolio/Orders}. Bold: called live on 24 Nov 2026 (\code{PfBs} answered 404, \figref{readeps}); roman: read from the client code only. Request bodies of the order paths are given in \figref{orderapi}.}{Web client code, DART Quant Team}

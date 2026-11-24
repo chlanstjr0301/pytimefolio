@@ -68,6 +68,10 @@ class Auth:
             return False
         for c in rows:
             self.t.cookies.set(c["name"], c["value"], domain=c["domain"], path=c["path"])
+            if c.get("expires"):                    # 만료 시각도 되돌린다: 없으면 다음 저장에서 null 이 되어 D5 가 멈춘다
+                for k in self.t.cookies.jar:
+                    if k.name == c["name"] and k.domain == c["domain"] and k.path == c["path"]:
+                        k.expires = int(c["expires"])
             if c["name"] == "refreshToken":
                 self._refresh_expires = c["expires"]
         return True

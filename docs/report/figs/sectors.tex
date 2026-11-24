@@ -1,0 +1,10 @@
+% OWNER: figs/sectors.tex. Edit only this file.
+\fig{sectors}{Consumer Discretionary was nearest its sector limit, 2.01\,pp below}[Sector weights (\%) against their limits, headroom in pp, largest holding first; 09:52 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X R{19mm} R{15mm} R{14mm} R{16mm}}
+\thd{GICS sector} & \thd{Market weight} & \thd{Portfolio} & \thd{Limit} & \thd{Headroom}\\
+45 Information Technology & 52.90 & 45.74 & 105.80 & 60.06\\\rowsep
+20 Industrials & 17.70 & 30.17 & 35.40 & 5.23\\\rowsep
+\hl 25 Consumer Discretionary & 5.75 & 9.49 & 11.50 & 2.01\\\rowsep
+50 Communication Services & 5.00 or less & 6.79 & 10.00 & 3.21\\\rowsep
+35 Health Care & 5.69 & 6.54 & 11.38 & 4.84\\
+\end{tabularx}}}{Shaded row: the sector with the least headroom. Limit = max(2 $\times$ market weight, 10\%); headroom = limit $-$ portfolio weight. IT, the largest sector, had 60.06\,pp to spare. Market weights are derived from the limits; for Communication Services the 10\% floor applies, so its market weight is only bounded. The 5 sectors hold 98.73\% of the portfolio.}{\code{guidelines()} output, DART Quant Team}

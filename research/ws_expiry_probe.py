@@ -117,7 +117,7 @@ async def main(session: str, pf_id: int, minutes: float):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", default="r7.json")
-    ap.add_argument("--pf", type=int, default=27032)
+    ap.add_argument("--pf", type=int, required=True, help="your portfolio ID (pfId)")
     ap.add_argument("--minutes", type=float, default=28)
     a = ap.parse_args()
     asyncio.run(main(a.session, a.pf, a.minutes))

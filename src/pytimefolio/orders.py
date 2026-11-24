@@ -172,6 +172,7 @@ class Orders:
         self._write_lock = asyncio.Lock()
         self._place_lock = asyncio.Lock()        # 넣기와 찾기를 한 묶음으로: 같은 주문 두 건이 같은 ID 를 잡지 않게
         self._last_write = 0.0
+        self._claimed: set[int] = set()         # place() 가 이미 돌려준 ID: 같은 내용의 다음 주문이 가져가지 못하게
         self.halted: str | None = None           # 403/429 를 받으면 이유가 들어가고 이후 쓰기를 모두 거부
 
     # ---- 하루 건수 (재시작해도 이어진다)
@@ -209,6 +210,7 @@ class Orders:
     async def _write(self, path: str, body: dict, count: int = 1):
         """count: 이 요청이 하루 건수에 더하는 수 (신규 1, 정지는 정지한 주문 수)."""
         async with self._write_lock:
+            self.halted = self.halted or self.r.a.t.blocked   # 읽기·피드에서 받은 403/429 도 쓰기를 멈춘다
             if self.halted:
                 raise BlockedError(f"쓰기 중단 상태: {self.halted}")
             if self.used_today() + count > self.daily_cap:
@@ -283,7 +285,7 @@ class Orders:
         async with self._place_lock:
             await self.check(o)
             body = o.body(self.r.biz_day, self.r._pf(), self._now_hm())
-            before = set(self.hub.state.ords)
+            before = set(self.hub.state.ords) | self._claimed
             since = dt.datetime.fromtimestamp(self.r.a.t.server_time(), dt.timezone.utc)
             try:
                 await self._write("AddOrder", body)
@@ -291,7 +293,10 @@ class Orders:
                 if not e.sent:                         # 서버에 닿지 않은 것이 확실할 때만 한 번 다시
                     log.warning("AddOrder 연결 실패 (%s) -> 한 번 다시 보냄", e)
                     await asyncio.sleep(2)
-                    await self._write("AddOrder", body)
+                    try:
+                        await self._write("AddOrder", body)
+                    except ServerError as e2:              # 다시 보낸 것도 응답이 없으면 찾기로 넘어간다 (세 번째는 없음)
+                        log.warning("다시 보낸 AddOrder 도 실패 (%s) -> 피드와 Orders 에서 확인", e2)
                 else:
                     log.warning("AddOrder 응답 없음 (%s) -> 피드와 Orders 에서 확인, 다시 보내지 않음", e)
             rec = await self._find(o, before, 15)
@@ -300,6 +305,7 @@ class Orders:
             if not rec:
                 raise AmbiguousState(f"{o.prod_id} {o.wei}% 주문이 서버에 있는지 확인하지 못함. "
                                      "다시 보내지 않았으니 화면이나 Orders 로 확인할 것")
+            self._claimed.add(rec["Id"])
             log.info("주문 접수 Id=%s %s %.2f%% state=%s qty2ord=%s",
                      rec["Id"], o.prod_id, o.wei, rec.get("state"), rec.get("qty2ord"))
             return rec["Id"]

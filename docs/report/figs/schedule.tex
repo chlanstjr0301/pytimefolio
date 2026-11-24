@@ -1,0 +1,10 @@
+% OWNER: figs/schedule.tex. Edit only this file.
+\fig[wide]{schedule}{The wrapper finishes set-up before 08:50 and only polls and trades during the session}[A trading day for a strategy that rebalances once at the open]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{20mm} >{\RaggedRight\arraybackslash}p{26mm} >{\RaggedRight\arraybackslash}X}
+\thd{Time (KST)} & \thd{Phase} & \thd{Wrapper actions}\\
+07:10 & Start & Renew the token from the stored cookie jar, or log in if renewal fails; choose the portfolio; orders are refused until \code{currBizDay} equals the KST date\\\rowsep
+07:15 & Load & Open the live feed and take a snapshot; load \code{Universe} for each stock's sector; count the day's orders on the server\\\rowsep
+08:00 to 08:50 & Plan (caller) & The caller computes target weights from its own prices; \code{plan()} checks them against the universe, the total, the stock and sector limits and one share's weight, and converts them into orders; \code{guidelines()} reports the turnover and small-cap totals\\\rowsep
+08:50 & Submit & \code{rebalance()} re-counts the day's orders on the server, checks the daily cap of 80, then sends sells first, at least 1\,s apart; each order is confirmed when it appears in the feed's \code{ords}\\\rowsep
+09:00 to 15:20 & Session & Poll the feed every 3\,s; the first REST call after 720\,s renews the token, and the feed asks for a token only when it reconnects; stop orders on the caller's request\\
+\end{tabularx}}}{The caller chooses the times; apart from the 3\,s poll, the wrapper acts only when called. An order placed at 08:30 was \code{Working} by 08:33, began filling at 09:00, the session's start, and was \code{Done} at 09:08:07 (Section~\ref{sec:orders}).}{DART Quant Team}

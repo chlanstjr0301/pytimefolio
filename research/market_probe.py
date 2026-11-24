@@ -1,4 +1,5 @@
 """장중 실험: push(Q6), delta(Q5), race(Q7). 주문은 보내지 않는다."""
+import os
 import argparse
 import asyncio
 import datetime as dt
@@ -86,7 +87,7 @@ class Hub:
 
 
 
-PF = 27032
+PF = int(os.environ["TF_PF_ID"])  # your portfolio ID
 
 
 async def push_test(http, a):

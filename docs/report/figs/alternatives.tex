@@ -1,0 +1,10 @@
+% OWNER: figs/alternatives.tex. Edit only this file.
+\fig[wide]{alternatives}{Direct HTTP requests from one \code{asyncio} thread; an unconfirmed order is never resent}[Alternatives considered for each design decision]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{27mm} >{\RaggedRight\arraybackslash}p{52mm} >{\RaggedRight\arraybackslash}X}
+\thd{Decision} & \thd{Chosen} & \thd{Alternatives and why they lost}\\
+How to reach the server & HTTP requests as the page makes them: 16.0\ms{} per reused request with curl, 31 to 39\ms{} from Python & Browser automation (Playwright): every action waits on page rendering, breaks when the layout changes and needs a browser on the run host\\\rowsep
+Concurrency & \code{asyncio} in one thread & Synchronous requests: an order would wait while a feed request waits for its reply. Threads: the feed thread can change the state between any 2 statements, so every read of the state needs a lock; \code{asyncio} switches tasks only at \code{await}. Both tasks spend their time waiting on the network, so the GIL costs nothing\\\rowsep
+Feed transport & WebSocket only & Server-Sent Events and long polling, offered in the server's negotiation reply: long polling adds 1 HTTP request per message. Neither is implemented\\\rowsep
+Token on the WebSocket & \code{Authorization} header & In the URL, as browsers must send it: the token would end up in access logs\\\rowsep
+Lost \code{AddOrder} reply & Never resend: look for the order in the feed for 15\,s, then in REST \code{Orders}; if it is in neither, raise \code{AmbiguousState}. Resend once only after a connection failure that never reached the server & Resend at once: risks a duplicate order, since the reply carries no order ID\\
+\end{tabularx}}}{``Chosen'' is what \code{pytimefolio} 0.1.0 implements. Request times are from Section~\ref{sec:transport}; we did not time browser automation. The negotiation reply of the live feed (Section~\ref{sec:feed}) lists WebSockets, Server-Sent Events and long polling.}{DART Quant Team}

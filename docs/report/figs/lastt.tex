@@ -1,0 +1,28 @@
+% OWNER: figs/lastt.tex. Edit only this file.
+\fig[wide]{lastt}{Only rule (a) predicts every reply; (b) fails at 5 steps and (c) at 1}[Predicted and observed reply type by \code{lastT} sent; 11 requests 3\,s apart on 2 connections, 06:06 KST, 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{R{6mm} >{\RaggedRight\arraybackslash}X >{\centering\arraybackslash}p{9mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm} >{\centering\arraybackslash}p{17mm}}
+\thd{Step} & \thd{\code{lastT} sent} & \thd{Conn.} & \thd{(a) last \code{t}, this connection} & \thd{(b) any recent time} & \thd{(c) last \code{t}, this account} & \thd{Observed}\\
+\rowsep
+1 & 0 & A & \textcolor{greyD}{full} & \textcolor{greyD}{full} & \textcolor{greyD}{full} & \textbf{full}\\
+\rowsep
+2 & \code{t} of the previous reply & A & \textcolor{greyD}{delta} & \textcolor{greyD}{delta} & \textcolor{greyD}{delta} & \cellcolor{navyXL}\textbf{delta}\\
+\rowsep
+3 & \code{t} of the reply before that (6 s old) & A & \textcolor{greyD}{full} & \cellcolor{navyL}\textbf{delta\,$\times$} & \textcolor{greyD}{full} & \textbf{full}\\
+\rowsep
+4 & previous \code{t} minus 1 (never sent) & A & \textcolor{greyD}{full} & \cellcolor{navyL}\textbf{delta\,$\times$} & \textcolor{greyD}{full} & \textbf{full}\\
+\rowsep
+5 & previous \code{t} minus 60 & A & \textcolor{greyD}{full} & \cellcolor{navyL}\textbf{delta\,$\times$} & \textcolor{greyD}{full} & \textbf{full}\\
+\rowsep
+6 & previous \code{t} minus 3,600 & A & \textcolor{greyD}{full} & \textcolor{greyD}{n/a} & \textcolor{greyD}{full} & \textbf{full}\\
+\rowsep
+7 & previous \code{t} plus 100 & A & \textcolor{greyD}{full} & \textcolor{greyD}{n/a} & \textcolor{greyD}{full} & \textbf{full}\\
+\rowsep
+8 & \code{t} of the previous reply & A & \textcolor{greyD}{delta} & \textcolor{greyD}{delta} & \textcolor{greyD}{delta} & \cellcolor{navyXL}\textbf{delta}\\
+\rowsep
+8$'$ & the same value again & A & \textcolor{greyD}{full} & \cellcolor{navyL}\textbf{delta\,$\times$} & \textcolor{greyD}{full} & \textbf{full}\\
+\specialrule{0.8pt}{1pt}{1pt}
+9 & last \code{t} from connection A & B & \textcolor{greyD}{full} & \cellcolor{navyL}\textbf{delta\,$\times$} & \cellcolor{navyL}\textbf{delta\,$\times$} & \textbf{full}\\
+\rowsep
+10 & \code{t} of the previous reply & B & \textcolor{greyD}{delta} & \textcolor{greyD}{delta} & \textcolor{greyD}{delta} & \cellcolor{navyXL}\textbf{delta}\\
+\end{tabularx}}
+}{Mid-blue cells with $\times$ are predictions the observation contradicts; grey text marks predictions it confirms; in the Observed column, deltas are shaded light grey-blue; n/a: rule (b) does not say whether a \code{t} an hour old (step 6) or 100\,s ahead of the server (step 7) counts as recent, so it predicts neither reply type there. Step 3 sends a \code{t} the server really sent 6\,s earlier; step 4 a value it never sent; steps 5 to 7 test for a tolerance window; step 8$'$ repeats the value just used; step 9 opens connection B with connection A's last \code{t}. A reply is full when it contains \code{pos} and a delta when it contains \code{pos_diff}; before the open, full replies were 9,915 bytes and deltas 577 (\figref{replysizes}).}{DART Quant Team}

@@ -33,7 +33,8 @@ class Transport:
             limits=httpx.Limits(keepalive_expiry=keepalive_expiry),
             event_hooks={"response": [self._on_response]},
         )
-        self._offsets: deque[float] = deque(maxlen=9)   # 최근 9개 표본의 중앙값을 쓴다
+        self._offsets: deque[float] = deque(maxlen=9)
+        self.blocked: str | None = None          # 어떤 요청이든 403/429 를 받으면 이유가 들어간다 (쓰기 중단에 쓴다)   # 최근 9개 표본의 중앙값을 쓴다
 
     # ---------------------------------------------------------------- 수명
     async def __aenter__(self) -> "Transport":
@@ -103,6 +104,7 @@ class Transport:
         if resp.status_code == 401:
             raise AuthError(resp.headers.get("www-authenticate", "401"))
         if resp.status_code in (403, 429):
+            self.blocked = self.blocked or f"{resp.status_code} {method} {path}"
             raise BlockedError(f"{resp.status_code} {method} {path}: 차단 또는 요청 제한")
         if resp.status_code == 400:
             raise RequestError(resp.text[:300])

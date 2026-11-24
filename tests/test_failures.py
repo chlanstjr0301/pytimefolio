@@ -12,7 +12,7 @@ import httpx
 
 from pytimefolio import orders as orders_mod
 from pytimefolio.auth import Auth
-from pytimefolio.errors import AuthError, BlockedError, RequestError, ServerError, StaleFeed
+from pytimefolio.errors import AmbiguousState, AuthError, BlockedError, RequestError, ServerError, StaleFeed
 from pytimefolio.hub import Hub
 from pytimefolio.orders import Order, Orders, _same_order, quantize, remaining_wei, target_to_orders
 from pytimefolio.state import PortfolioState
@@ -104,6 +104,17 @@ class AuthTest(unittest.TestCase):
         run(go())
         self.assertEqual(calls["refresh"], 1)
         self.assertIn(calls["x"], (3, 4))                # 거절된 요청만 한 번씩 다시 보냄
+
+    def test_cookie_expiry_survives_restart(self):
+        """저장 -> 복원 -> 다시 저장해도 refreshToken 만료 시각이 남는다 (D5 재로그인 판단에 필요)."""
+        exp = int(time.time()) + 6 * 86400
+        self.session.write_text(json.dumps([{"name": "refreshToken", "value": "v", "domain": "contest.timefolio.net",
+                                             "path": "/", "expires": exp}]))
+        a = Auth(Transport(transport=httpx.MockTransport(lambda r: httpx.Response(200))), session_file=self.session)
+        self.assertTrue(a._load_cookies())
+        self.assertEqual(a.refresh_expires, exp)
+        a._save_cookies()
+        self.assertEqual(json.loads(self.session.read_text())[0]["expires"], exp)
 
     def test_corrupt_session_file_falls_back(self):
         self.session.write_text("{broken")
@@ -232,6 +243,90 @@ class OrdersGateTest(unittest.TestCase):
             run(od.place(Order("A005930", 0.1, limit_prc=150000)))
         with self.assertRaises(StaleFeed):
             run(od.wait_done(123))
+
+    def test_failed_resend_is_searched_not_raised(self):
+        """연결 실패 -> 한 번 다시 보냄 -> 그것도 실패해도 ServerError 가 아니라 찾기를 거쳐 AmbiguousState."""
+        n = {"add": 0}
+        def h(req):
+            n["add"] += 1
+            raise httpx.ConnectError("down", request=req)
+        od, _ = self.make(h)
+        async def quick_find(o, before, timeout): return None
+        od._find = quick_find
+        with mock.patch.object(orders_mod.asyncio, "sleep", new=mock.AsyncMock()):
+            with self.assertRaises(AmbiguousState):
+                run(od.place(Order("A005930", 0.1, limit_prc=150000)))
+        self.assertEqual(n["add"], 2)                    # 처음 + 한 번 다시, 세 번째는 없다
+
+    def test_same_order_twice_gets_two_ids(self):
+        """주문 1 의 ID 가 피드에 늦게 나타나도 같은 내용의 주문 2 가 그 ID 를 가져가지 않는다."""
+        od, hub = self.make(lambda r: httpx.Response(200, json={"data": ""}))
+        rec = {"prodId": "A005930", "ls": "L", "ex": "E", "wei": 0.1, "state": "Working"}
+        seq = iter([{**rec, "Id": 11}, {**rec, "Id": 12}])
+        async def rest_orders(*a): return [next(seq)]   # 주문 1 은 REST 로만 확인된다
+        od.r.orders = rest_orders
+        async def no_feed(o, before, timeout): return None
+        od._find = no_feed
+        first = run(od.place(Order("A005930", 0.1, limit_prc=150000)))
+        async def late_feed(o, before, timeout):       # 주문 2 를 찾는 동안에야 피드에 주문 1 이 나타난다
+            hub.state.ords[11] = {**rec, "Id": 11}
+            return od._match(o, before)
+        od._find = late_feed
+        second = run(od.place(Order("A005930", 0.1, limit_prc=150000)))
+        self.assertEqual(first, 11)
+        self.assertEqual(second, 12)
+
+    def test_block_on_read_halts_writes(self):
+        """읽기에서 받은 403 도 이후 쓰기를 막는다."""
+        od, _ = self.make(lambda r: httpx.Response(403))
+        with self.assertRaises(BlockedError):
+            run(od.r.a.call("GET", "/api/Portfolio/Orders"))
+        od.r.a.t._client._transport = httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+        with self.assertRaises(BlockedError):
+            run(od._write("AddOrder", {}))
+
+
+class FakeWS:
+    """send 는 버리고, recv 는 주어진 프레임을 차례로 돌려준 뒤 영원히 기다린다."""
+    def __init__(self, frames, gap):
+        self.frames, self.gap = list(frames), gap
+    async def send(self, _): pass
+    async def recv(self):
+        if self.frames:
+            await asyncio.sleep(self.gap)
+            return self.frames.pop(0)
+        await asyncio.sleep(3600)
+    async def close(self): pass
+
+
+class HubTimeoutTest(unittest.TestCase):
+    def test_pings_do_not_extend_reply_deadline(self):
+        """응답 없이 ping 만 계속 와도 요청 하나의 기한(reply_timeout)이 지나면 TimeoutError."""
+        h = Hub.__new__(Hub)
+        h.interval, h.reply_timeout, h._last_t, h.pf_id = 3.0, 0.5, 0, 1
+        h.a = mock.Mock(biz_day="2026-11-24")
+        h.state = PortfolioState()
+        ping = json.dumps({"type": 6}) + "\x1e"
+        h.ws = FakeWS([ping] * 20, gap=0.2)            # 0.2 s 마다 ping: 프레임마다 기한을 새로 잡으면 끝나지 않는다
+        t0 = time.monotonic()
+        with self.assertRaises((TimeoutError, asyncio.TimeoutError)):
+            run(h.poll_once())
+        self.assertLess(time.monotonic() - t0, 1.0)
+
+    def test_blocked_stops_reconnecting(self):
+        h = Hub.__new__(Hub)
+        h.interval, h.reply_timeout, h.failures, h.ws = 3.0, 20.0, 0, None
+        calls = {"n": 0}
+        async def connect():
+            calls["n"] += 1
+            raise BlockedError("403 POST /hubs/main/negotiate")
+        h.connect = connect
+        async def go():
+            async for _ in h.stream():
+                pass
+        with self.assertRaises(BlockedError):
+            run(go())
+        self.assertEqual(calls["n"], 1)
 
 
 class HubFreshnessTest(unittest.TestCase):

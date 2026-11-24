@@ -14,6 +14,7 @@
 로그아웃처럼 쿠키를 무효로 만들 수 있는 요청은 보내지 않는다.
 """
 
+import os
 import asyncio
 import datetime as dt
 import json
@@ -159,7 +160,7 @@ async def cmd_push():
                 await ws.send(json.dumps({"protocol": "json", "version": 1}) + RS)
                 await ws.recv()
                 req = {"type": 1, "target": "RequestPortfolio",
-                       "arguments": [{"intv": 3, "auto": auto, "lastT": 0, "d": s["biz"], "pfId": 27032}]}
+                       "arguments": [{"intv": 3, "auto": auto, "lastT": 0, "d": s["biz"], "pfId": int(os.environ["TF_PF_ID"])}]}
                 await ws.send(json.dumps(req) + RS)
                 print(f"[{now()}] auto={auto} 요청 1회 전송. 이후 60초 동안 요청 없이 ping만 보냄", flush=True)
                 end, last_ping, n = time.time() + 60, time.time(), 0

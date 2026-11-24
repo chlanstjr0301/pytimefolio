@@ -1,0 +1,21 @@
+% OWNER: figs/client.tex. Edit only this file.
+\def\fclL#1#2{\hspace*{#1mm}\code{#2}}% one code line, indented #1 mm
+\def\fclC#1{\leavevmode{\rmfamily\color{greyD}#1}}% comment beside a code line
+\fig{client}{One class gives the strategy its state, its orders and the guideline status}[Use of the \code{Timefolio} client, version 0.1.0; comments on the right]{%
+{\fontsize{7.6}{9.6}\selectfont\begin{tabular}{@{}>{\RaggedRight\arraybackslash}p{84mm} >{\RaggedRight\arraybackslash}p{48mm}@{}}
+\fclL{0}{async with Timefolio(91, email=os.environ["EMAIL"],} & \fclC{contest 91; the password is passed in,}\\
+\fclL{28.4}{password=os.environ["PASSWORD"]) as tf:} & \fclC{never stored; the cookie jar is saved}\\[2pt]
+\fclL{4}{w = tf.weights()} & \fclC{\code{prodId} $\rightarrow$ current \code{wei} (\%)}\\
+\fclL{4}{tf.orders_left()} & \fclC{80 minus today's new orders and stops}\\[2pt]
+\fclL{4}{orders = tf.plan(targets, min_wei=0.05, max_total=100,} & \fclC{dry run: sends nothing}\\
+\fclL{27}{prices={"A000660": p}, limit_idx=5)} & \fclC{\code{ValueError} on a rule breach}\\
+\fclL{4}{tf.dropped} & \fclC{orders below one share, left out}\\[2pt]
+\fclL{4}{try:} & \\
+\fclL{8}{ids = await tf.rebalance(targets, limit_idx=5)} & \fclC{\code{plan()}, then the orders 1\,s apart}\\
+\fclL{4}{except RebalanceError as e:} & \\
+\fclL{8}{e.placed} & \fclC{order IDs sent before the failure}\\[2pt]
+\fclL{4}{i = await tf.buy("A005930", 0.1, limit_prc=150700)} & \fclC{or \code{tf.sell}; returns the order ID}\\
+\fclL{4}{await tf.stop(i)} & \fclC{\code{stop(*ids)} takes several}\\
+\fclL{4}{r = await tf.wait(i)} & \fclC{\code{r.outcome}, \code{r.cum_qty}, \code{r.qty2ord}, \code{r.avg_px}}\\[2pt]
+\fclL{4}{g = await tf.guidelines()} & \fclC{\code{g["ok"]}, \code{g["sector"]}, \code{g["turnover"]}}\\
+\end{tabular}}}{\code{targets} maps tickers to target weights in percent and describes the whole portfolio: a held stock left out of it gets target 0 and is sold. \code{plan()} returns the orders \code{rebalance()} would send, sells first, after subtracting what working orders still have to fill; \code{prices} gives the price of a stock the portfolio does not hold, so that its one-share check can run (Section~\ref{sec:oneshare}). Price arguments (\code{**price}) are exactly one of \code{limit_prc}, \code{limit_idx} or \code{stop_prc}, with optional \code{hm0} and \code{hm1}. \code{buy()} and \code{sell()} return the order ID found in the feed, since \code{AddOrder} returns none (Section~\ref{sec:orders}). \code{rebalance()} first re-counts today's orders on the server and sends nothing if its orders exceed what is left of the daily cap. \code{r.outcome} is \code{filled}, \code{stopped} or \code{partly_filled_then_stopped}. \code{p} stands for a price in KRW supplied by the caller.}{DART Quant Team; \code{client.py} of pytimefolio 0.1.0}

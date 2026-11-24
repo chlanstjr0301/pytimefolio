@@ -1,0 +1,8 @@
+% OWNER: figs/sectortest.tex. Edit only this file.
+\fig{sectortest}{\code{plan()} rejected Industrials at +6\,pp and accepted +3\,pp}[Industrials weight in \% (GICS 20, limit 35.36\%) moved by shifting weight from Samsung Electronics to HD Hyundai Heavy Industries; 09:55 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{58mm} R{15mm} >{\RaggedRight\arraybackslash\leftskip=8pt}X}
+\thd{Target change} & \thd{Industrials} & \thd{\code{plan()} result}\\
+None (current weights) & 30.14 & 0 orders\\\rowsep
+\hl Industrials +6\,pp, Samsung Electronics $-$6\,pp & 36.14 & \code{ValueError}: \texttt{20 36.14\% > 35.36\%}; no orders\\\rowsep
+Industrials +3\,pp, Samsung Electronics $-$3\,pp & 33.14 & 2 orders: sell Samsung Electronics 3\%, then buy HD Hyundai Heavy Industries 3\%\\
+\end{tabularx}}}{Shaded row: the rejected target set. Samsung Electronics is in sector 45, whose limit is 105.80\%, so only Industrials could break a limit. Nothing was sent.}{DART Quant Team}

@@ -18,8 +18,8 @@ class OrderMathTest(unittest.TestCase):
         self.assertAlmostEqual(o[0].wei, 1.0)
 
     def test_order_body(self):
-        b = Order("A005930", 0.1, limit_prc=151800).body("2026-11-24", 27032, "09:18")
-        self.assertEqual(b, {"d": "2026-11-24", "pfId": 27032, "prodId": "A005930", "ls": "L", "ex": "E",
+        b = Order("A005930", 0.1, limit_prc=151800).body("2026-11-24", 12345, "09:18")
+        self.assertEqual(b, {"d": "2026-11-24", "pfId": 12345, "prodId": "A005930", "ls": "L", "ex": "E",
                              "wei": 0.1, "exitAll": False, "limitPrc": 151800, "limitIdx": None,
                              "stopPrc": None, "hm0": "09:18", "hm1": None})   # 09:18 실제 캡처와 같은 형태
         with self.assertRaises(ValueError):

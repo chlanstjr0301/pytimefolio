@@ -1,0 +1,9 @@
+% OWNER: figs/pytimings.tex. Edit only this file.
+\fig[wide]{pytimings}{The Python client pays 1.2 to 1.3\,s once per process and 31 to 39\ms{} per reused request}[Time of one REST request by client, moment and connection state, 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{40mm} >{\RaggedRight\arraybackslash}p{42mm} R{17mm} @{\hspace{6pt}}>{\RaggedRight\arraybackslash}X}
+\thd{Client, moment} & \thd{Request} & \thd{Time} & \thd{Where the time goes}\\
+curl, 06:03 (before the open) & Reused connection & 16.0\ms & 1 RTT (11.1\ms) plus about 5\ms{} on the server (\figref{timing})\\\rowsep
+\hl Python, during the session & Reused connection & 31 to 39\ms & Cause of the gap to curl not separated: client, time of day, market-hours load\\\rowsep
+Python, fresh process & First request & 1.2 to 1.3\,s & Module loading and SSL set-up, once per process; the virtual environment lies on the Windows drive\\\rowsep
+Python, same process & First request of a second client & 130\ms & New connection only; the one-time cost is already paid\\
+\end{tabularx}}}{The shaded row is the cost of every wrapper request after start-up. The 1.2 to 1.3\,s is paid once by \code{warm_up()} at start, before the first order. Python times come from the \code{transport} live checks (\figref{tests}).}{DART Quant Team}

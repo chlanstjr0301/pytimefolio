@@ -1,0 +1,33 @@
+% OWNER: figs/loop.tex. Edit only this file.
+% Pseudocode of Hub.stream / poll_once / assert_fresh in pytimefolio/hub.py, comments beside the code.
+\fig[wide]{loop}{The receive loop keeps one request in flight and reconnects after any error, starting again from a snapshot}[Pseudocode of the live-feed loop in \code{hub.py}, with the reason for each step beside it]{%
+{\fontsize{7.6}{9.8}\selectfont
+\newcommand{\cm}[1]{\leavevmode{\rmfamily\color{greyD}#1}}%
+\newcommand{\I}[1]{\hspace*{#1mm}}%
+\begin{tabular}{@{}>{\ttfamily\raggedright\arraybackslash}p{104mm} >{\RaggedRight\arraybackslash}p{70mm}@{}}
+poll(hub):                                                   & \\
+\I{4}n $\leftarrow$ 0; lastReply $\leftarrow$ never         & \cm{n counts consecutive failures}\\
+\I{4}loop:                                                   & \\
+\I{8}try:                                                    & \\
+\I{12}if not connected:                                      & \\
+\I{16}negotiate; open WebSocket; handshake                   & \cm{token renewed first if older than 720\,s or refused (Section~\ref{sec:auth})}\\
+\I{16}lastT $\leftarrow$ 0                                   & \cm{a new connection starts from a snapshot}\\
+\I{12}send(RequestPortfolio(lastT, d = currBizDay, pfId))   & \\
+\I{12}p $\leftarrow$ await receive(timeout = 20\,s)          & \cm{one request in flight; pings answered while waiting}\\
+\I{12}if p = null: lastT $\leftarrow$ 0                      & \cm{empty reply: state kept, next reply is a snapshot}\\
+\I{12}elif p.pos $\neq$ null: state $\leftarrow$ p; lastT $\leftarrow$ p.t & \cm{snapshot: replace the state}\\
+\I{12}else: merge(state, p); lastT $\leftarrow$ p.t          & \cm{delta: merge; \code{t} is echoed, never computed with}\\
+\I{12}lastReply $\leftarrow$ now; n $\leftarrow$ 0           & \cm{recorded for the freshness check below}\\
+\I{8}except any error:                                       & \cm{502, 401, malformed JSON, timeout, closed socket}\\
+\I{12}close WebSocket; n $\leftarrow$ n + 1                  & \\
+\I{12}await sleep(uniform(0, min(30, 2$^{\mathrm{n}}$)))       & \cm{full-jitter backoff, at most 30\,s; then reconnect}\\
+\I{12}continue                                               & \\
+\I{8}await sleep(3)                                          & \cm{ask again 3\,s after each reply}\\[3pt]
+merge(state, p):                                             & \\
+\I{4}for each diff in p.pos\_diff, p.ords\_diff, p.msecs\_diff: & \\
+\I{8}add diff.added; drop diff.removed                       & \\
+\I{8}for (i, f) in diff.updated: state[int(i)] $\mid$= f     & \cm{changed fields only; keys are record \code{Id}s as strings}\\
+\I{4}state.bs $\mid$= p.bs\_updated                          & \cm{keeps net assets (\code{na}) current}\\[3pt]
+assertFresh():                                               & \cm{called before reads, orders and \code{wait_done}}\\
+\I{4}if now $-$ lastReply > 2 $\times$ 3 + 20 = 26\,s: raise StaleFeed & \cm{2 missed polls plus the 20\,s reply timeout}\\
+\end{tabular}}}{\code{updated} keys are record \code{Id}s sent as strings; snapshot \code{Id}s are integers, hence \code{int(i)}. $\mid$= merges a dict of changed fields into the stored record. \code{uniform(0, x)} draws a wait uniformly between 0 and \code{x} seconds; a success resets n to 0. Token renewal is lazy: the feed asks for a token only when it connects or reconnects, and an open WebSocket keeps working after the token expires (\figref{token}). In a 15-round test against snapshots with the same \code{t} on a second connection, the merged \code{pos} and \code{ords} records matched field for field in every round (Section~\ref{sec:feed}).}{\code{pytimefolio/hub.py} v0.1.0, DART Quant Team}

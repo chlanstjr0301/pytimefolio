@@ -1,0 +1,10 @@
+% OWNER: figs/readeps.tex. Edit only this file.
+\fig[wide]{readeps}{4 read endpoints answer; \code{Orders} needs a date range, \code{PfBs} returns 404}[\code{Portfolio} read endpoints called with the live \code{pfId} and \code{d} (07:33 KST), \code{Orders} with \code{d0} and \code{d1} (09:16 KST), 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{14mm} R{10mm} R{16mm} >{\RaggedRight\setlength{\leftskip}{3mm}\arraybackslash}X >{\RaggedRight\arraybackslash}p{52mm}}
+\thd{Path} & \thd{HTTP} & \thd{Records} & \thd{Content} & \thd{Use in the wrapper}\\
+\code{Session} & 200 & 1 & \code{hm0} 09:00, \code{hm1} 15:20 & Bounds for order start and end times\\\rowsep
+\code{Universe} & 200 & 2,648 & \code{Id}, \code{nm}, \code{sec} (GICS sector); some tickers alphanumeric & Ticker validation, sector of each stock\\\rowsep
+\code{Trades} & 200 & 62 & 1 record per position from entry to exit; 23 still open at 07:33, matching the 23 holdings; 64 records after the day's entries; times in UTC & Position history and realised profit\\\rowsep
+\code{Orders} & 200 & 1 per order & Every order from \code{d0} to \code{d1}, \code{Done} ones included, so the count depends on the dates sent. Fields: \code{Id}, \code{state}, \code{qty2ord}, \code{cumQty}, \code{avgPx} (average fill price, KRW), \code{cnclT}, \code{genT}, \code{lastMCV}, \code{sgn}. Sent with \code{d} instead, it returned an empty list & Day's order count at start-up\\\rowsep
+\code{PfBs} & 404 & 0 & Not found under the 3 areas tried (\code{Portfolio}, \code{Contest}, \code{Analysis}), as GET or POST & Not used; balances come from the live feed\\
+\end{tabularx}}}{GET with query parameters unless noted. HTTP: status code; Records: items in the reply. \code{Orders} parameters copied from the web page's own request.}{DART Quant Team}

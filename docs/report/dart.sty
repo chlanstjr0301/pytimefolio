@@ -13,7 +13,8 @@
   \setmainfont{Arial}[BoldFont={Arial Bold},ItalicFont={Arial Italic},BoldItalicFont={Arial Bold Italic}]%
   \setsansfont{Arial}}{%
   \setmainfont{Liberation Sans}\setsansfont{Liberation Sans}}
-\IfFontExistsTF{Consolas}{\setmonofont{Consolas}[Scale=0.92]}{\setmonofont{DejaVu Sans Mono}[Scale=0.84]}
+% Code and pseudocode: Latin Modern Mono (ships with TeX Live and MiKTeX), a typewriter face set apart from the sans body.
+\setmonofont{lmmono10-regular.otf}[BoldFont=lmmonolt10-bold.otf,ItalicFont=lmmono10-italic.otf,Scale=1.1]
 \IfFontExistsTF{Malgun Gothic}{\newfontfamily\kofont{Malgun Gothic}[BoldFont={Malgun Gothic Bold}]}{\newfontfamily\kofont{Liberation Sans}}
 \RequirePackage{xcolor}
 \definecolor{navy}{HTML}{161C3C}   % main (cover band)
@@ -31,6 +32,7 @@
 \RequirePackage[hidelinks]{hyperref}
 \RequirePackage{microtype}
 \RequirePackage{needspace}
+\RequirePackage{longtable}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt}
 \linespread{1.08}
@@ -70,7 +72,11 @@
 % section heading = claim sentence
 \newcommand{\claim}[1]{\par\vspace{6pt}{\fontsize{10.5}{13}\selectfont\bfseries\color{navy}\RaggedRight\hyphenpenalty=10000 \exhyphenpenalty=10000 \relax #1\par}\vspace{1pt}}
 \newcommand{\lead}[1]{{\bfseries #1}}
-\newcommand{\figref}[1]{{\color{navyM}\itshape Figure~#1}}
+\newcommand{\figref}[1]{{\color{navyM}\itshape Figure~\ref{fig:#1}}}% #1 = label without the fig: prefix
+% section number + label inside a \claim heading: \claim{\secnum{2.1}{sec:transport}\quad ...}
+\makeatletter
+\newcommand{\secnum}[2]{\phantomsection\def\@currentlabel{#1}\label{#2}#1}
+\makeatother
 % figure block: caption above with rule, optional subtitle, body, Note/Source below
 \NewDocumentCommand{\figblock}{ o m m o m m m }{% [wide] number title [subtitle] body note source
   \par\Needspace{16\baselineskip}\vspace{4pt}\noindent\begingroup\setlength{\parskip}{0pt}
@@ -82,6 +88,31 @@
   {\fontsize{7}{8.6}\selectfont\color{greyD}\RaggedRight Note: #6\par Source: #7\par}
   \vspace{1pt}{\color{black}\rule{\linewidth}{0.4pt}}
   \end{adjustwidth}\endgroup\par\vspace{2pt}}
+% numbered figure block (automatic numbering): \fig[wide]{label}{head}[subtitle]{body}{note}{source}
+% steps dartfig, prints "Figure N." and sets \label{fig:<label>}; layout identical to \figblock
+\newcounter{dartfig}
+\newsavebox{\dartfigbox}
+\newif\iffiginline % true: set the figure where it stands (cover); false: float to the nearest top or here
+\NewDocumentCommand{\fig}{ o m +m o +m +m +m }{%
+  \par
+  \setbox\dartfigbox=\vbox{\setlength{\parskip}{0pt}%
+  \IfValueTF{#1}{\hsize=\dimexpr\textwidth+\extrawide\relax}{\hsize=\textwidth}\linewidth=\hsize\columnwidth=\hsize
+  \refstepcounter{dartfig}\label{fig:#2}%
+  \noindent{\color{navy}\rule{\linewidth}{0.8pt}}\par\vspace{1pt}
+  {\fontsize{9}{11}\selectfont\bfseries\RaggedRight Figure \thedartfig. #3\par}
+  \IfValueT{#4}{{\fontsize{8}{10}\selectfont\color{greyD}\RaggedRight #4\par}}
+  \vspace{3pt}{\centering #5\par}\vspace{2pt}
+  {\fontsize{7}{8.6}\selectfont\color{greyD}\RaggedRight Note: #6\par Source: #7\par}
+  \vspace{1pt}\noindent{\color{black}\rule{\linewidth}{0.4pt}}}%
+  \iffiginline
+    \Needspace{\dimexpr\ht\dartfigbox+\dp\dartfigbox\relax}\vspace{4pt}\noindent\makebox[\linewidth][l]{\box\dartfigbox}\par\vspace{2pt}%
+  \else
+    \begin{figure}[!ht]\noindent\makebox[\linewidth][l]{\box\dartfigbox}\end{figure}%
+  \fi}
+\setcounter{topnumber}{3}\setcounter{bottomnumber}{2}\setcounter{totalnumber}{4}
+\renewcommand{\topfraction}{0.95}\renewcommand{\bottomfraction}{0.7}\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.75}
+\setlength{\textfloatsep}{10pt plus 3pt minus 2pt}\setlength{\intextsep}{8pt plus 3pt minus 2pt}\setlength{\floatsep}{10pt plus 3pt minus 2pt}
 % navy-header table helpers
 \newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
 \newcolumntype{R}[1]{>{\RaggedLeft\arraybackslash}p{#1}}

@@ -1,0 +1,86 @@
+% OWNER: figs/timing.tex. Edit only this file.
+
+\fig[wide]{timing}{A new connection costs 106.5\ms, a reused one 16.0\ms}[One curl request to \code{Portfolio/Violations}, medians of 10 runs (40 reused requests); time runs down, same scale in both panels]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  f/.style={font=\fontsize{7}{8.2}\selectfont},
+  host/.style={font=\fontsize{7}{8.2}\selectfont\bfseries,text=navy,anchor=south,align=center},
+  tl/.style={greyM,line width=0.6pt,dotted,-{Stealth[length=1.4mm]}},
+  msg/.style={-{Stealth[length=1.6mm]},line width=0.7pt,navy},
+  rep/.style={-{Stealth[length=1.6mm]},line width=0.7pt,navyM},
+  ml/.style={f,text=navy,sloped,above,inner sep=0.6pt},
+  stg/.style={line width=0.5pt,navy},
+  sl/.style={f,anchor=east,align=right,text=navy},
+  ptitle/.style={font=\fontsize{7.5}{9}\selectfont\bfseries,text=navy,anchor=west}]
+\def\tT#1{-0.72*(#1)}% time in ms -> y in mm (0.72 mm per ms, both panels)
+% ============================================ panel (a): new connection
+\def\Rx{0}\def\Cx{22}\def\Sx{58}
+\node[ptitle] at (-24,14) {(a) New connection: DNS, TCP and TLS come before the request};
+\node[host] at (\Rx,2.5) {DNS\\resolver};
+\node[host] at (\Cx,2.5) {Client\\(curl)};
+\node[host] at (\Sx,2.5) {Server\\(nginx)};
+\foreach \x in {\Rx,\Cx,\Sx} {\draw[tl] (\x,1) -- (\x,{\tT{110}});}
+% DNS: the split inside the 49.3 ms is not measured; arrows drawn one-way 3 ms
+\draw[msg] (\Cx,{\tT{0}}) -- node[ml]{A query} (\Rx,{\tT{3}});
+\fill[navyXL] (\Rx-1,{\tT{3}}) rectangle (\Rx+1,{\tT{46.3}});
+\draw[rep] (\Rx,{\tT{46.3}}) -- node[ml]{A reply} (\Cx,{\tT{49.3}});
+% TCP: one RTT
+\draw[msg] (\Cx,{\tT{49.3}}) -- node[ml]{SYN} (\Sx,{\tT{54.85}});
+\draw[rep] (\Sx,{\tT{54.85}}) -- node[ml,pos=0.7]{SYN-ACK} (\Cx,{\tT{60.4}});
+% TLS 1.3: one RTT, then the rest of curl's TLS time on the client
+\draw[msg] (\Cx,{\tT{60.4}}) -- node[ml,pos=0.66]{ACK, ClientHello} (\Sx,{\tT{65.95}});
+\draw[rep] (\Sx,{\tT{65.95}}) -- node[ml,below,inner sep=0.4pt,pos=0.45]{ServerHello ... Finished} (\Cx,{\tT{71.5}});
+\fill[navyXL] (\Cx-1,{\tT{71.5}}) rectangle (\Cx+1,{\tT{89.3}});
+\node[f,anchor=west,text=greyD,align=left] at (\Cx+1.8,{\tT{81.4}}) {rest of curl's TLS time};
+% request to first byte
+\draw[msg] (\Cx,{\tT{89.3}}) -- node[ml]{Finished, \code{HEADERS} (request)} (\Sx,{\tT{94.85}});
+\fill[navyXL] (\Sx-1,{\tT{94.85}}) rectangle (\Sx+1,{\tT{100.45}});
+\node[f,anchor=west,text=greyD] at (\Sx+1.8,{\tT{97.65}}) {server};
+\draw[rep] (\Sx,{\tT{100.45}}) -- node[ml,below,inner sep=0.4pt]{\code{HEADERS} 200, \code{DATA}} (\Cx,{\tT{106}});
+% stage brackets (left)
+\draw[stg] (-3+1,{\tT{0}-0.2}) -- ++(-1,0) -- (-3,{\tT{49.3}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{24.65}}) {DNS lookup\\\textbf{49.3}\ms\\{\color{greyD}no DNS cache}\\{\color{greyD}in WSL}};
+\draw[stg] (-3+1,{\tT{49.3}-0.2}) -- ++(-1,0) -- (-3,{\tT{60.4}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{54.85}}) {TCP \textbf{11.1}\ms\\= 1 RTT};
+\draw[stg] (-3+1,{\tT{60.4}-0.2}) -- ++(-1,0) -- (-3,{\tT{89.3}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{74.85}}) {TLS 1.3 \textbf{28.9}\ms\\{\color{greyD}handshake 1 RTT,}\\{\color{greyD}12.4\ms{} in Python}};
+\draw[stg] (-3+1,{\tT{89.3}-0.2}) -- ++(-1,0) -- (-3,{\tT{106}+0.2}) -- ++(1,0);
+\node[sl] at (-4.6,{\tT{97.65}}) {request to first\\byte \textbf{16.7}\ms};
+\draw[stg] (\Sx+12,{\tT{0}}) -- ++(1,0) -- (\Sx+13,{\tT{106}}) -- ++(-1,0);
+\node[f,text=navy,rotate=-90,anchor=south] at (\Sx+14.5,{\tT{53}}) {total \textbf{106.5}\ms{} (median of totals; stage medians sum to 106.0\ms)};
+% ============================================ panel (b): reused connection
+\def\Cb{94}\def\Sb{126}
+\node[ptitle] at (\Cb-8,14) {(b) Reused connection: the request only};
+\node[host] at (\Cb,2.5) {Client\\(curl)};
+\node[host] at (\Sb,2.5) {Server\\(nginx)};
+\foreach \x in {\Cb,\Sb} {\draw[tl] (\x,1) -- (\x,{\tT{24}});}
+\draw[msg] (\Cb,{\tT{0}}) -- node[ml]{\code{HEADERS} (request)} (\Sb,{\tT{5.55}});
+\fill[navyXL] (\Sb-1,{\tT{5.55}}) rectangle (\Sb+1,{\tT{10.45}});
+\draw[rep] (\Sb,{\tT{10.45}}) -- node[ml,below,inner sep=0.4pt]{\code{HEADERS} 200, \code{DATA}} (\Cb,{\tT{16}});
+\draw[stg] (\Cb-3+1,{\tT{0}-0.2}) -- ++(-1,0) -- (\Cb-3,{\tT{16}+0.2}) -- ++(1,0);
+\node[sl] at (\Cb-4.6,{\tT{8}}) {\textbf{16.0}\ms};
+\node[f,anchor=north west,align=left,text=navy] at (\Cb-6,{\tT{24}-2}) {1 RTT (11.1\ms) plus about 5\ms{} on the server:\\a new HTTP/2 stream on the open connection};
+% run-to-run spread strip: min to max over 10 runs (40 for reused), tick = median; 0.18 mm per ms
+\begin{scope}[shift={(\Cb+14,{\tT{24}-17})}]
+\def\s{0.16}
+\node[f,anchor=south west,font=\fontsize{7}{8.2}\selectfont\bfseries,text=navy] at (-20,1.6) {Spread over runs, min to max (ms)};
+\foreach \lab/\lo/\md/\hi/\r in {DNS/36.6/49.3/94.1/0, TCP/9.4/11.1/12.3/1, TLS/17.8/28.9/40.4/2, To first byte/15.7/16.7/19.8/3, {Total, new}/80.5/106.5/156.9/4, {Total, reused}/14.8/16.0/20.3/5} {
+  \pgfmathsetmacro{\yy}{-3.9*\r}
+  \node[f,anchor=east,text=navy] at (-0.8,\yy) {\lab};
+  \draw[navyL,line width=1.8pt] ({\s*\lo},\yy) -- ({\s*\hi},\yy);
+  \draw[navy,line width=1pt] ({\s*\md},\yy-1.3) -- ({\s*\md},\yy+1.3);
+  \node[f,anchor=west,text=greyD] at ({\s*160+0.8},\yy) {\lo{} to \hi};
+}
+\draw[greyM,line width=0.4pt] (0,-21.5) -- ({\s*160},-21.5);
+\foreach \t in {0,50,100,150} {\draw[greyM,line width=0.4pt] ({\s*\t},-21.5) -- ({\s*\t},-22.3); \node[f,anchor=north,text=greyD] at ({\s*\t},-22.3) {\t};}
+\end{scope}
+% legend and scale bar
+\begin{scope}[shift={(-24,{\tT{110}-6})}]
+\draw[msg] (0,0) -- (7,0); \node[f,anchor=west] at (8,0) {client to server};
+\draw[rep] (32,0) -- (39,0); \node[f,anchor=west] at (40,0) {reply};
+\fill[navyXL] (54,-1.2) rectangle (56,1.2); \node[f,anchor=west] at (57,0) {local work};
+\draw[greyD,line width=0.6pt] (78,{-0.72*5}) -- (78,{0.72*5});
+\foreach \t in {-5,5} {\draw[greyD,line width=0.6pt] (77.2,{0.72*\t}) -- (78.8,{0.72*\t});}
+\node[f,anchor=west,text=greyD] at (79.5,0) {10\ms{} on both panels};
+\end{scope}
+\end{tikzpicture}%
+}{One-way times are drawn as half the 11.1\ms{} TCP round trip (RTT). Only the stage boundaries are measured: curl's \code{time_*} values are cumulative, and a stage is the difference between adjacent values; ``request to first byte'' runs from the end of curl's TLS stage to the first byte of the reply. The split inside the DNS lookup and inside curl's TLS stage is not measured. Labels give medians; the strip gives the range over the 10 runs (40 reused requests), with the median as a tick. All 50 requests returned HTTP 200. 06:03 KST, 24 Nov 2026. Time-space drawing after Kurose and Ross [6].}{DART Quant Team}

@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Choi Munseok" }, { name = "Choi Yeayun" }]
-dependencies = ["httpx[http2]>=0.28", "websockets>=13"]
+dependencies = ["httpx[http2]>=0.28", "websockets>=13", "certifi"]
 classifiers = ["Programming Language :: Python :: 3", "Framework :: AsyncIO", "Development Status :: 3 - Alpha"]
 
 [project.urls]

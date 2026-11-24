@@ -1,0 +1,65 @@
+% OWNER: sections/app_b_decisions.tex. Edit only this file.
+\par\Needspace{50mm}\seclabel
+\claim{Appendix \secnum{B}{app:decisions}\quad Decision log}
+\lead{36 decisions fix the wrapper's behaviour, and 19 of them would cost an order, the account or a credential if they were wrong.} Each row gives the decision, the section that holds its evidence with one number from it, and the source of that evidence: Measured (our own requests on 24 Nov 2026), Organiser (the e-mail reply [5]) or Contest (the guideline page of the contest site). Cost if wrong is High when a wrong decision would place, lose or duplicate an order, break a guideline, get the account blocked or expose a credential, and Low when it would cost extra requests, latency or a visible error. Revisit if names the observation that would reopen the decision. The tables group the decisions by layer; D-numbers stay as cited in the sections, so they are not in order within a table.
+
+\newcommand{\dlogtable}[2]{%
+\par\Needspace{30mm}\vspace{4pt}%
+{\tabfont\setlength{\LTleft}{0pt}\LTright=\dimexpr-\extrawide\relax plus 1fill\relax\setlength{\LTpre}{0pt}\setlength{\LTpost}{0pt}%
+\begin{longtable}{>{\RaggedRight\arraybackslash}p{6mm} >{\RaggedRight\arraybackslash}p{56mm} >{\RaggedRight\arraybackslash}p{47mm} >{\RaggedRight\arraybackslash}p{13mm} >{\RaggedRight\arraybackslash}p{9mm} >{\RaggedRight\arraybackslash}p{37mm}}
+\multicolumn{6}{@{}l}{\fontsize{8.5}{10.5}\selectfont\bfseries\color{navy}#1}\\[2pt]
+\thd{D} & \thd{Decision} & \thd{Evidence (section: number)} & \thd{Source} & \thd{Cost if wrong} & \thd{Revisit if}\\
+\endfirsthead
+\multicolumn{6}{@{}l}{\fontsize{8.5}{10.5}\selectfont\bfseries\color{navy}#1 (continued)}\\[2pt]
+\thd{D} & \thd{Decision} & \thd{Evidence (section: number)} & \thd{Source} & \thd{Cost if wrong} & \thd{Revisit if}\\
+\endhead
+#2
+\end{longtable}}\par\vspace{2pt}}
+
+\dlogtable{Transport and login (Sections \ref{sec:transport} and \ref{sec:auth})}{%
+D1 & One HTTP/2 client for the life of the process & \ref{sec:transport}: 106.5\ms{} on a new connection, 16.0\ms{} on a reused one & Measured & Low & The server drops HTTP/2\\\rowsep
+D2 & \code{keepalive_expiry} 10\,s, below the server's idle timeout & \ref{sec:transport}: idle connections closed after 15 to 30\,s & Measured & Low & Reconnects appear in the logs\\\rowsep
+D3 & Lazy renewal: no timer; the first REST request more than 720\,s after the access token was issued renews it, by the server's clock (median offset of the last 9 \code{Date} headers); the live feed asks for a token only when it connects or reconnects & \ref{sec:auth}: access token lasts 900\,s; PC clock 3\,s off the server's & Measured & Low & The access-token lifetime changes\\\rowsep
+D4 & Send the whole cookie jar on renewal & \ref{sec:auth}: \code{refreshToken} alone gave HTTP 401 & Measured & Low & \code{SilentRefresh} accepts \code{refreshToken} alone\\\rowsep
+D5 & Log in when the cookie jar has less than 1 day left & \ref{sec:auth}: expiry fixed at 7 days from login, unchanged by renewal & Measured & Low & Renewal starts extending the expiry\\\rowsep
+D16 & No \code{Logout} on shutdown; cookie jar stored outside the repository in \code{~/.config/pytimefolio/session.json}, mode 0600 & \ref{sec:auth}: the saved cookie jar still renewed after \code{Logout} & Measured & High & \code{Logout} starts revoking login sessions\\\rowsep
+D17 & Never log in while the stored login session works; log in when renewal fails & \ref{sec:auth}: each login adds a 7-day login session & Measured & Low & Login sessions become revocable\\\rowsep
+D18 & \code{warm_up()} at start, before any timed request & \ref{sec:transport}: first request of a fresh process 1.2 to 1.3\,s & Measured & Low & The first request costs no more than a reused one\\\rowsep
+D26 & Single-flight renewal: concurrent \code{token()} calls share one \code{SilentRefresh}, re-checked inside the token lock & \ref{sec:auth}: 2 simultaneous renewals both returned HTTP 200; offline, 5 calls sent 1 & Measured & Low & A second renewal starts invalidating the first token\\\rowsep
+D36 & On a 401, renew once and resend the request, an \code{AddOrder} included; a second 401 raises \code{AuthError} & \ref{sec:auth}: ASP.NET authenticates before the handler runs; no 401 on an order observed & Measured & High & An order answered with a 401 appears in the order list\\\rowsep
+D35 & Password never stored: the caller passes it to the constructor (for example from environment variables); only the cookie jar is stored, written atomically at login and after each renewal & \ref{sec:auth}: the cookie jar alone renews for 7 days & Measured & High & The server offers revocable credentials\\
+}
+
+\dlogtable{Queries and live feed (Sections \ref{sec:queries} and \ref{sec:feed})}{%
+D6 & Dates from \code{currBizDay} only & \ref{sec:queries}: a weekend date returned the previous trading day's data with HTTP 200 & Measured & High & The server returns an error for a non-trading date\\\rowsep
+D7 & Live portfolio chosen by contest, reset flag and end date & \ref{sec:queries}: \code{active} false for all portfolios; duplicate names & Measured & High & A new field marks the live portfolio\\\rowsep
+D8 & One feed request in flight; echo \code{t} unread; snapshot after any gap & \ref{sec:feed}: rule (a) predicted every reply; \code{t} offset 32,400\,s & Measured & High & The live feed starts pushing replies unasked\\\rowsep
+D9 & Get a valid access token before every reconnect; leave an open WebSocket alone when the token is renewed & \ref{sec:feed}: an open WebSocket answered for 8 minutes past expiry, beyond the 300\,s REST cut-off (\figref{token}); a new negotiation was refused with HTTP 401 & Measured & Low & The server closes WebSockets at token expiry\\\rowsep
+D14 & Merge deltas by \code{int(Id)}, changed fields only; index from ticker (\code{prodId}) to record ID & \ref{sec:feed}: merged state equalled the same-\code{t} snapshot in 15 of 15 rounds & Measured & High & A merged state differs from a snapshot\\\rowsep
+D27 & No orders until \code{currBizDay} equals the KST date & \ref{sec:queries}: business day rolled over between 06:02 and 07:07 & Measured & High & The organiser publishes the rollover time\\\rowsep
+D30 & Reads, orders and \code{wait_done} raise \code{StaleFeed} when the last reply is older than 26\,s (2 polls of 3\,s plus the 20\,s reply timeout); any feed error reconnects with full-jitter backoff U(0, min(30, $2^n$))\,s & \ref{sec:feed}: one feed request every 3\,s & Measured & High & \code{StaleFeed} is raised while replies arrive\\\rowsep
+D31 & Merge \code{bs_updated} into \code{bs} on every delta & \ref{sec:feed}: 20 of 20 deltas carried \code{bs_updated}; \code{na} moved by KRW 428,180 within 60\,s & Measured & Low & A delta arrives without \code{bs_updated}\\
+}
+
+\dlogtable{Orders (Sections \ref{sec:intro}, \ref{sec:orders} and \ref{sec:design})}{%
+D10 & At most 80 orders a day; at least 1\,s between writes; 1 feed request every 3\,s & \ref{sec:intro}: an IP address may be blocked at 100 orders a day & Organiser & High & The organiser changes the limit\\\rowsep
+D11 & Never resend an order: after a lost \code{AddOrder} reply, look for the order in the feed for 15\,s, then in REST \code{Portfolio/Orders} records newer than the write, else raise \code{AmbiguousState}; retry once only a request that provably never reached the server (\code{ConnectError}, \code{ConnectTimeout}, \code{PoolTimeout}); hold 1 lock across write and find & \ref{sec:orders}: the \code{AddOrder} reply carries no order ID & Measured & High & The \code{AddOrder} reply starts carrying an order ID\\\rowsep
+D13 & Order \code{wei} $=$ target weight $-$ current weight & \ref{sec:orders}: \code{wei} 0.3 with 0.13\% held gave \code{qty2ord} 7 & Measured & High & \code{qty2ord} starts following the target weight\\\rowsep
+D15 & Finished $=$ \code{Done}; stopped if \code{cnclT} set; partly filled if also 0~$<$~\code{cumQty}~$<$~\code{qty2ord} & \ref{sec:orders}: 3 stopped orders ended \code{Done} with \code{cnclT} set and \code{cumQty} 0 of 4 & Measured & High & The server adds a stopped state\\\rowsep
+D21 & Sells sent as \code{ls} $=$ L, \code{ex} $=$ X & \ref{sec:wrappertests}: the live sell was recorded with \code{sgn} $= -1$ & Measured & High & The server rejects the form\\\rowsep
+D29 & Order \code{wei} quantised once to 0.01\% (\code{WEI_STEP}) when the order is built; the same value is sent and matched in the feed within 0.005 & \ref{sec:orders}: the server stored \code{wei} as sent (0.04, 0.1, 0.3) & Measured & Low & The server stores a rounded \code{wei}\\\rowsep
+D32 & \code{plan()} subtracts the remaining size of working orders, \code{wei} $\times$ (1 $-$ \code{cumQty} / \code{qty2ord}), signed by \code{ex} & \ref{sec:orders}: 7 shares filled over 7 min 37\,s & Measured & High & Orders fill within one feed request\\\rowsep
+D33 & Daily count: +1 per \code{AddOrder}, +1 per stopped order ID; 0 for a request that never reached the server; file written atomically under a file lock; start-up and \code{rebalance()} sync to max(local, server); \code{rebalance()} raises \code{RebalanceError} with the IDs already placed when an order fails & \ref{sec:wrappertests}: 16 of 80 used by 10:34 (9 new orders, 7 stops) & Organiser & High & The organiser publishes how it counts stops\\\rowsep
+D34 & HTTP 403 or 429 raises \code{BlockedError}; the wrapper then refuses every further write for the process & \ref{sec:intro}: blocking announced for 100 orders a day or bursts of traffic & Organiser & High & The server sends 429 with a \code{Retry-After} header\\
+}
+
+\dlogtable{\code{plan()} and guidelines (Sections \ref{sec:design}, \ref{sec:wrappertests}, \ref{sec:oneshare} and \ref{sec:guidelines})}{%
+D12 & Market data out of scope; the caller passes prices & \ref{sec:design}: the feed prices only held stocks (\code{close}) & Measured & Low & The contest server starts pricing every stock in \code{Universe}\\\rowsep
+D19 & \code{plan()} rejects targets that sum above 100\% (\code{max_total}) & \ref{sec:wrappertests}: a 139\% target passed water-filling & Measured & High & The contest allows totals above 100\%\\\rowsep
+D20 & \code{plan()} drops orders below one share's weight, price $\times$ 100 / \code{bs.na} & \ref{sec:oneshare}: 0.04\%, 1.76 shares' worth, gave \code{qty2ord} 1 twice (floor) & Measured & Low & An order under one share's weight fills a share\\\rowsep
+D22 & Share price from the feed's \code{close} for a held stock, from \code{prices=} otherwise; an order without a price kept with a warning; dropped orders kept in \code{tf.dropped} & \ref{sec:oneshare}: SK hynix +0.03\% dropped, 2 larger orders kept & Measured & Low & The feed starts reporting prices for stocks not held\\\rowsep
+D23 & \code{plan()} rejects targets outside \code{Universe} or over max(2 $\times$ market sector weight, 10\%) & \ref{sec:guidelines}: +6 pp Industrials rejected, +3 pp accepted & Contest & High & The server starts blocking sector orders\\\rowsep
+D24 & Net assets from \code{bs.na}; median of \code{pos} $\times$ \code{close} $\times$ 100 / \code{wei} as fallback & \ref{sec:oneshare}: KRW 837,002,427 against KRW 836,798,658, 0.02\% apart & Measured & Low & \code{na} disappears from \code{bs}\\\rowsep
+D25 & \code{guidelines()} from \code{cmpl}, \code{tags}, \code{msecs} keyed by \code{sec}, and \code{Violations}; \code{ok} needs 0 current violations and 5\% turnover; small caps and turnover only reported, outside \code{plan()} & \ref{sec:guidelines}: keying by record ID put IT over its limit against a server count of 0 & Contest & Low & Feed fields are renamed\\\rowsep
+D28 & \code{plan()} caps each target at the stock's \code{weiLimit}, or 15\% for a stock not held (Samsung Electronics, \code{A005930}: 40\%) & \ref{sec:guidelines}: the server refuses a buy past \code{weiLimit} itself & Contest & Low & The contest changes the stock limit\\
+}

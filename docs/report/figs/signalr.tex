@@ -1,0 +1,63 @@
+% OWNER: figs/signalr.tex. Edit only this file.
+% Time-space diagram in the style of Kurose & Ross Fig 2.7/3.39: two timelines, time runs down, sloped arrows,
+% message names along the arrows, events beside the timelines. The time axis is broken twice (zigzags).
+\fig[wide]{signalr}{After negotiation and a handshake, the server answers only feed requests}[Messages between the client and the live feed's hub \code{/hubs/main}, time running down; set-up in milliseconds, then the 3\,s poll cycle]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  f/.style={font=\fontsize{7}{8.4}\selectfont},
+  host/.style={font=\fontsize{7.5}{9}\selectfont\bfseries,text=navy,anchor=south,align=center},
+  tl/.style={greyM,line width=0.6pt},
+  msg/.style={-{Stealth[length=1.6mm]},line width=0.7pt,navy},
+  rep/.style={-{Stealth[length=1.6mm]},line width=0.7pt,greyD},
+  ml/.style={font=\fontsize{7.5}{9}\selectfont,sloped,above,inner sep=0.7pt,text=navy},
+  rl/.style={font=\fontsize{7.5}{9}\selectfont,sloped,below,inner sep=0.7pt,text=greyD},
+  ev/.style={f,anchor=east,align=right,text=greyD},
+  brk/.style={line width=0.6pt,greyM,fill=white},
+  stp/.style={f,anchor=west,text width=48mm,align=left,text=greyD,execute at begin node={\hyphenpenalty=10000\exhyphenpenalty=10000\relax}},
+  brace/.style={decorate,decoration={brace,amplitude=1mm},line width=0.5pt,navy}]
+\def\C{0}\def\S{92}
+% ---------------------------------------------------------------- hosts and timelines
+\node[host] at (\C,1) {Client\\(browser or wrapper)};
+\node[host] at (\S,1) {Server\\(SignalR hub)};
+\draw[tl] (\C,0) -- (\C,-106); \draw[tl] (\S,0) -- (\S,-106);
+\draw[tl,-{Stealth[length=1.4mm]}] (\C,-106) -- (\C,-109); \draw[tl,-{Stealth[length=1.4mm]}] (\S,-106) -- (\S,-109);
+\node[f,text=greyD,anchor=north] at (\C,-109.3) {time};\node[f,text=greyD,anchor=north] at (\S,-109.3) {time};
+% broken-axis marks: two zigzags across both timelines
+\newcommand{\sigzig}[1]{\foreach \x in {\C,\S}{\fill[white] (\x-1.6,#1+0.9) rectangle (\x+1.6,#1-0.9);
+  \draw[greyM,line width=0.5pt] (\x-1.6,#1+1.4) -- (\x+1.6,#1+0.4); \draw[greyM,line width=0.5pt] (\x-1.6,#1-0.4) -- (\x+1.6,#1-1.4);}}
+% ---------------------------------------------------------------- set-up (milliseconds)
+\draw[msg] (\C,-6) -- node[ml]{\code{POST /hubs/main/negotiate?negotiateVersion=1}} (\S,-10);
+\draw[rep] (\S,-11) -- node[rl]{200: \code{connectionId}, \code{connectionToken}, 3 transports} (\C,-15);
+\draw[msg] (\C,-23) -- node[ml]{\code{GET /hubs/main?id=...}, \code{Upgrade: websocket}} (\S,-27);
+\draw[rep] (\S,-28) -- node[rl]{\code{101 Switching Protocols}} (\C,-32);
+\draw[msg] (\C,-40) -- node[ml]{\code{{"protocol":"json","version":1}} 0x1E} (\S,-44);
+\draw[rep] (\S,-45) -- node[rl]{\code{{}} 0x1E} (\C,-49);
+% events beside the client timeline
+\node[ev] at (\C-2,-8) {connection 1, HTTP/2,\\already open for REST};
+\node[ev] at (\C-2,-25) {connection 2: new TLS\\connection, HTTP/1.1};
+\node[ev] at (\C-2,-42) {handshake};
+% ---------------------------------------------------------------- poll cycle
+\draw[msg] (\C,-56) -- node[ml]{\code{RequestPortfolio} \code{{intv:3, auto:true, lastT:0, d, pfId}}} (\S,-60);
+\draw[rep] (\S,-61) -- node[rl]{\code{ReceivePortfolio}: snapshot (\code{bs}, \code{ords}, \code{pos}, \code{msecs})} (\C,-65);
+\draw[brace] (\C-2,-65) -- (\C-2,-56) node[midway,ev,xshift=-1.2mm] {reply in\\20 to 84\ms};
+% 3 s wait with a break
+\fill[navyM] (\C-0.6,-65.5) rectangle (\C+0.6,-76.5);
+\sigzig{-71}
+\draw[brace] (\C-2,-76.5) -- (\C-2,-65.5) node[midway,ev,xshift=-1.2mm] {wait 3\,s\\(not to scale)};
+\draw[msg] (\C,-77) -- node[ml]{\code{RequestPortfolio} \code{{..., lastT = t of previous reply}}} (\S,-81);
+\draw[rep] (\S,-82) -- node[rl]{\code{ReceivePortfolio}: delta (\code{pos_diff}, \code{ords_diff}, \code{msecs_diff})} (\C,-86);
+\fill[navyM] (\C-0.6,-86.5) rectangle (\C+0.6,-93);
+\sigzig{-90}
+\node[ev] at (\C-2,-90) {wait 3\,s, then repeat};
+% ping: both directions, drawn level (schematic)
+\draw[{Stealth[length=1.6mm]}-{Stealth[length=1.6mm]},line width=0.6pt,greyD,dashed] (\C,-100) -- node[f,above,inner sep=0.8pt,text=greyD]{type 6 ping, sent by both sides; server every 15\,s} (\S,-100);
+\node[ev] at (\C-2,-100) {keeps an idle\\connection open};
+% ---------------------------------------------------------------- step brackets on the right
+\foreach \a/\b/\n/\t in {-5/-16/1/{\textbf{Negotiate}: an HTTP/2 POST with the Bearer token on the REST connection; the reply offers WebSockets, Server-Sent Events and long polling},
+  -22/-33/2/{\textbf{Connect}: the server offers no WebSockets over HTTP/2 [1], so the upgrade opens a second TLS connection. The wrapper sends the token as a header; browsers put it in the URL},
+  -39/-50/3/{\textbf{Handshake}: both sides agree on JSON messages, each ended by the byte 0x1E},
+  -55/-95/4/{\textbf{Poll}: the server sends a portfolio only in reply to a request. The client asks again 3\,s after each reply; a \code{lastT} equal to the previous reply's \code{t} returns a delta (\figref{lastt})}} {
+  \draw[greyM,line width=0.5pt] (\S+3,\a) -- (\S+4,\a) -- (\S+4,\b) -- (\S+3,\b);
+  \node[stp] at (\S+5.5,{(\a+\b)/2}) {\n.\ \t};
+}
+\end{tikzpicture}
+}{Navy arrows are sent by the client and grey arrows by the server. Time runs down; the set-up part is drawn in milliseconds without measured durations, and the two zigzags mark the 3\,s waits, cut short. Reply times of 20 to 84\ms{} were measured before dawn with \code{auto} set to true and to false. The ping arrow is drawn level because both sides send pings independently. Type 1 is an invocation of a method on the other side, type 6 a ping and type 7 a close. In a browser recording from 28 Oct 2026 the client sent each request 3\,s after the previous reply.}{Browser developer tools, Python implementation, DART Quant Team}

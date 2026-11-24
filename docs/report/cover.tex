@@ -1,19 +1,20 @@
 % Cover: same coordinate grid as the 7709 report cover.tex (mm from page top-left, text baselines).
 % Title Arial Bold 14pt, subtitle 10pt grey; right column Quant Team + authors (name 8pt bold, e-mail +3.9mm, pitch 9.5mm; no phone numbers in the public version).
-% \covertitlelines (1 or 2) must match the typeset title; the subtitle moves down 5.98mm per extra title line.
+% \covertitlelines (1 or 2) must match the typeset title; the subtitle moves down 6.88mm per extra title line.
 \thispagestyle{dartpage}
 \begin{tikzpicture}[remember picture,overlay,x=1mm,y=-1mm,shift={(current page.north west)}]
   \node[anchor=base west,inner sep=0,text width=136.2mm,align=left] at (14.54,32.69)
-    {\fontsize{14}{17}\selectfont\bfseries\addfontfeatures{LetterSpace=0.64}\color{navy}\RaggedRight\hyphenpenalty=10000 \exhyphenpenalty=10000 \relax\covertitle};
-  \node[anchor=base west,inner sep=0,text width=136.2mm,align=left] at (14.54,{40.01+5.98*(\covertitlelines-1)})
+    {\fontsize{20}{24}\selectfont\bfseries\addfontfeatures{LetterSpace=0.64}\color{navy}\RaggedRight\hyphenpenalty=10000 \exhyphenpenalty=10000 \relax\covertitle};
+  \node[anchor=base west,inner sep=0,text width=136.2mm,align=left] at (14.54,{41.6+6.88*(\covertitlelines-1)})
     {\fontsize{10}{12}\selectfont\addfontfeatures{LetterSpace=0.41}\color{subgrey}\coversubtitle};
   \node[anchor=base west,inner sep=0] at (154.57,31.55) {\kofont\bfseries\fontsize{10}{10}\selectfont\addfontfeatures{LetterSpace=4.2}\color{navy}Quant Team};
   \fill[navy] (154.13,33.15) rectangle (197.73,33.49);
   \def\analystlist{38.02/Choi Munseok/chlanstjr0301@gmail.com,
-                   47.52/Choi Yeayun/yunn1215@gmail.com}
+                   47.52/Choi Yeayun/dbs6463@naver.com}
   \foreach \y/\n/\e in \analystlist {
     \node[anchor=base west,inner sep=0] at (154.57,\y) {\kofont\bfseries\fontsize{8}{8}\selectfont\addfontfeatures{LetterSpace=3.0}\color{black}\n};
     \node[anchor=base west,inner sep=0] at (154.57,\y+3.9) {\kofont\fontsize{7}{7}\selectfont\addfontfeatures{LetterSpace=2.1}\color{body}\e};
   }
+  \node[anchor=base west,inner sep=0] at (14.54,280.6) {\fontsize{7.5}{9}\selectfont\color{subgrey}Code: \href{https://github.com/chlanstjr0301/pytimefolio}{\code{github.com/chlanstjr0301/pytimefolio}}};
 \end{tikzpicture}%
-\vspace*{\dimexpr 5.98mm*(\covertitlelines-1)+24.8mm\relax}%
+\vspace*{\dimexpr 6.88mm*(\covertitlelines-1)+26.4mm\relax}%

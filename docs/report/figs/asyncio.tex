@@ -1,0 +1,118 @@
+% OWNER: figs/asyncio.tex. Edit only this file.
+% Gantt block: \tfgb{y}{x0}{x1}{fill}{text colour}{label}
+\providecommand{\tfgb}[6]{\fill[#4] (#2,#1-2) rectangle (#3,#1+2);
+  \node[font=\fontsize{7}{8.4}\selectfont,text=#5,inner sep=0pt] at ({(#2+#3)/2},#1) {#6};}
+\fig[wide]{asyncio}{One thread runs the coroutines in turn; the token lock lets only one of them renew}[Gantt chart of the event loop while \code{rebalance()} places 2 orders and \code{guidelines()} runs beside it]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  f/.style={font=\fontsize{7}{8.4}\selectfont},
+  lane/.style={f,anchor=east,align=right,text=navy},
+  note/.style={f,text=greyD,inner sep=0.5pt},
+  ptitle/.style={font=\fontsize{7.5}{9}\selectfont\bfseries,text=navy,anchor=west},
+  ev/.style={-{Stealth[length=1.4mm]},line width=0.5pt,navyM,dashed}]
+% ====================================================== panel (a): 0 to 145 ms, 1 mm per ms
+\node[ptitle] at (-30,8) {(a) First 145\,ms: one coroutine runs at a time; G waits for the token lock instead of renewing again};
+\node[lane] at (-2,0)   {\textbf{Event loop}\\{\color{greyD}one thread}};
+\node[lane] at (-2,-9)  {\textbf{Feed task}\\{\color{greyD}\code{hub.stream()}}};
+\node[lane] at (-2,-21) {\textbf{Coroutine R}\\{\color{greyD}\code{rebalance()}}};
+\node[lane] at (-2,-32) {\textbf{Coroutine G}\\{\color{greyD}\code{guidelines()}}};
+\node[lane] at (-2,-42) {\textbf{Token lock}\\{\color{greyD}\code{Auth._lock}}};
+\node[lane] at (-2,-51) {\textbf{Place lock}\\{\color{greyD}\code{Orders._place_lock}}};
+\begin{scope}
+% event loop strip
+\draw[greyM,line width=0.4pt] (0,-2) rectangle (145,2);
+\tfgb{0}{0}{3}{navy}{white}{R}     \tfgb{0}{3}{6}{navy}{white}{G}
+\tfgb{0}{35}{38}{navy}{white}{R}   \tfgb{0}{38}{41}{navy}{white}{G}
+\tfgb{0}{70}{73}{navy}{white}{R}   \tfgb{0}{73}{76}{navy}{white}{G}
+\tfgb{0}{105}{108}{navy}{white}{R} \tfgb{0}{140}{143}{navy}{white}{R}
+\foreach \a/\b in {6/35,41/70,76/105,108/140} {\node[note] at ({(\a+\b)/2},0) {idle};}
+% feed task
+\tfgb{-9}{0}{145}{navyL}{navy}{\code{sleep(3)} between feed requests; next request in panel (b)}
+% coroutine R
+\tfgb{-21}{0}{3}{navy}{white}{}
+\tfgb{-21}{3}{35}{navyM}{white}{\code{SilentRefresh}}
+\tfgb{-21}{35}{38}{navy}{white}{}
+\tfgb{-21}{38}{70}{navyM}{white}{\code{Orders} (re-count)}
+\tfgb{-21}{70}{73}{navy}{white}{}
+\tfgb{-21}{73}{105}{navyM}{white}{\code{ValidateProduct}}
+\tfgb{-21}{105}{108}{navy}{white}{}
+\tfgb{-21}{108}{140}{navyM}{white}{\code{AddOrder}}
+\tfgb{-21}{140}{143}{navy}{white}{}
+\fill[navyL] (143,-23) rectangle (145,-19);
+\draw[decorate,decoration={brace,amplitude=1.2mm},navy,line width=0.5pt] (0,-18.3) -- (36.5,-18.3);
+\node[f,text=navy,anchor=south west] at (0,-17.3) {token older than 720\,s: lock, re-check, renew};
+\draw[decorate,decoration={brace,amplitude=1.2mm},navy,line width=0.5pt] (105,-18.3) -- (108,-18.3);
+\node[f,text=navy,anchor=south east] at (145,-17.3) {write gate: at least 1\,s since the last write, under 80 orders today};
+% coroutine G
+\tfgb{-32}{3}{6}{navy}{white}{}
+\tfgb{-32}{6}{38}{greyM}{navy}{waits for the lock}
+\tfgb{-32}{38}{41}{navy}{white}{}
+\tfgb{-32}{41}{73}{navyM}{white}{\code{Violations}}
+\tfgb{-32}{73}{76}{navy}{white}{}
+\node[note,anchor=north west] at (3,-34.3) {token due, lock busy};
+\node[note,anchor=north west] at (38,-34.3) {re-check inside the lock: token already new, no 2nd renewal};
+\node[note,anchor=west] at (77,-32) {returns};
+% token lock
+\tfgb{-42}{0}{36.5}{navy}{white}{held by R}
+\node[note,anchor=west] at (38,-42) {free; G enters and leaves at once};
+% place lock
+\tfgb{-51}{70}{145}{navy}{white}{held by R from the checks through write and find}
+% axis
+\draw[greyD,line width=0.4pt] (0,-54.6) -- (145,-54.6);
+\foreach \t in {0,35,70,105,140} {\draw[greyD,line width=0.4pt] (\t,-54.6) -- (\t,-55.6); \node[f,text=greyD,anchor=north] at (\t,-55.6) {\t};}
+\node[f,text=greyD,anchor=north west] at (0,-58.8) {ms after R and G start together; each request drawn 32\,ms (measured 31 to 39\,ms); dark slices drawn 3\,ms wide};
+\end{scope}
+% ====================================================== panel (b): 0 to 10 s, 12 mm per s
+\begin{scope}[yshift=-77mm]
+\node[ptitle] at (-30,9) {(b) First 10\,s: each order is confirmed by finding it in the feed's state; the write gate spaces the 2 orders};
+\def\s{12}
+\node[lane] at (-2,0)   {\textbf{Feed task}\\{\color{greyD}\code{hub.stream()}}};
+\node[lane] at (-2,-12) {\textbf{Coroutine R}\\{\color{greyD}\code{rebalance()}}};
+\node[lane] at (-2,-26) {\textbf{Place lock}};
+% feed: sleeping, with request-reply slivers
+\fill[navyL] (0,-2) rectangle (10*\s,2);
+\foreach \t/\l in {1.88/{reply adds order 1},4.88/{reply adds order 2},7.88/{reply}} {
+  \fill[navyM] (\t*\s-0.4,-2) rectangle (\t*\s+0.4,2);
+  \node[f,anchor=south,text=navy] at (\t*\s,2.3) {\l};}
+\foreach \t in {0.4,3.38,6.38} {\node[f,text=navy] at (\t*\s+5,0) {\code{sleep(3)}};}
+\node[f,text=navy] at (8.88*\s+5,0) {\code{sleep(3)}};
+% R lane
+\fill[navy] (0,-14) rectangle (0.14*\s+0.6,-10);
+\fill[navyL] (0.14*\s+0.6,-14) rectangle (2.14*\s,-10);
+\fill[navy] (2.14*\s,-14) rectangle (2.25*\s+0.6,-10);
+\fill[navyL] (2.25*\s+0.6,-14) rectangle (5.25*\s,-10);
+\foreach \t in {0.64,1.14,1.64,2.75,3.25,3.75,4.25,4.75} {\draw[white,line width=0.7pt] (\t*\s,-14) -- (\t*\s,-10);}
+\node[f,text=navy,anchor=west] at (5.25*\s+1.5,-12) {\code{rebalance()} returns both order IDs};
+% found markers and causal arrows
+\foreach \t/\r in {2.14/1.88,5.25/4.88} {
+  \fill[navy] (\t*\s,-9.6) -- ++(-1.1,1.8) -- ++(2.2,0) -- cycle;
+  \draw[ev] (\r*\s,-2.2) -- (\t*\s,-7.6);}
+\node[f,text=navy,anchor=west] at (2.14*\s+1.5,-6.6) {order 1 found (2.0\,s)};
+\node[f,text=navy,anchor=west] at (5.25*\s+1.5,-6.6) {order 2 found (3.0\,s)};
+% annotations below R
+\draw[decorate,decoration={brace,amplitude=1.2mm,mirror},greyD,line width=0.5pt] (0.14*\s,-15) -- (1.14*\s,-15);
+\node[note,anchor=north west,align=left] at (0,-16.8) {order 1 sent;\\gate shut 1\,s};
+\node[note,anchor=north west,align=left] at (2.14*\s-0.5,-15.4) {order 2 sent:\\gate open (2.1\,s)};
+\node[note,anchor=north west,align=left] at (5.25*\s+1.5,-15.4) {white ticks: R looks in \code{hub.state} every 0.5\,s for up to 15\,s,\\then in REST \code{Orders}; if the order is in neither, R raises\\\code{AmbiguousState}; it never resends the order};
+% place lock
+\fill[navy] (0.07*\s,-28) rectangle (2.14*\s,-24);
+\fill[navy] (2.14*\s,-28) rectangle (5.25*\s,-24);
+\draw[white,line width=0.7pt] (2.14*\s,-28) -- (2.14*\s,-24);
+\node[f,text=white] at ({(0.07+2.14)/2*\s},-26) {order 1};
+\node[f,text=white] at ({(2.14+5.25)/2*\s},-26) {order 2: check, write, find};
+% axis
+\draw[greyD,line width=0.4pt] (0,-31) -- (10*\s,-31);
+\foreach \t in {0,...,10} {\draw[greyD,line width=0.4pt] (\t*\s,-31) -- (\t*\s,-32); \node[f,text=greyD,anchor=north] at (\t*\s,-32) {\t};}
+\node[f,text=greyD,anchor=north] at (5*\s,-35.2) {s after R starts};
+\end{scope}
+% ====================================================== legend
+\begin{scope}[yshift=-120mm]
+\foreach \c/\x in {navy/0,navyM/34,greyM/64,navyL/96} {\fill[\c] (\x,0) rectangle ++(3.5,2.4);}
+\node[f,anchor=west] at (4.3,1.2) {Running on the thread};
+\node[f,anchor=west] at (38.3,1.2) {Waiting for a reply};
+\node[f,anchor=west] at (68.3,1.2) {Waiting for a lock};
+\node[f,anchor=west] at (100.3,1.2) {Sleeping or looking in the state};
+\fill[navy] (1.75,-2.6) -- ++(-1.1,1.8) -- ++(2.2,0) -- cycle; \node[f,anchor=west] at (4.3,-1.7) {order ID found};
+\draw[ev] (34,-1.7) -- (37.5,-1.7); \node[f,anchor=west] at (38.3,-1.7) {feed reply changes \code{hub.state}};
+\fill[navy] (96,-2.9) rectangle ++(3.5,2.4); \node[f,anchor=west] at (100.3,-1.7) {lock held (lock lanes)};
+\end{scope}
+\end{tikzpicture}}{The lock lanes use navy for ``held''. Measured: requests from Python take 31 to 39\ms{} (Section~\ref{sec:transport}); orders appeared in the feed 1 to 3\,s after \code{AddOrder}. Wrapper settings: feed request every 3\,s, look in the state every 0.5\,s, 1\,s between writes, 80 orders a day, renewal at the first call after 720\,s by the server's clock. Illustrative: the start times, the order of the coroutines and the feed reply times, chosen within the measured ranges. Gantt layout after Silberschatz et al.\ [7]. In panel (b), times in brackets run from sending an order to finding it, and from the end of the last write to the next write.}{DART Quant Team; code at \code{src/pytimefolio} (\code{auth}, \code{orders}, \code{hub})}

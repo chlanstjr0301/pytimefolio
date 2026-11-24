@@ -1,0 +1,46 @@
+% OWNER: figs/token.tex. Edit only this file.
+\fig[wide]{token}{The server accepts an access token for 300\,s after expiry; an open WebSocket outlives it}[Three tests on 24 Nov 2026 aligned at each access token's expiry (x = 0): REST requests with a token issued at 08:16:43 by the server's clock, one WebSocket whose token expired at 07:21:41 KST, and the refresh cookie set at the 05:38:54 login]{%
+\begin{tikzpicture}[x=6mm,y=1mm,lab/.style={font=\fontsize{7}{8.4}\selectfont},lane/.style={font=\fontsize{7.5}{9}\selectfont\bfseries,anchor=east,text width=24mm,align=right}]
+% ---- lane labels
+\node[lane] at (-15.25,0) {REST requests};
+\node[lane] at (-15.25,-17) {Open WebSocket};
+\node[lane] at (-15.25,-31) {Refresh cookie};
+% ---- expiry line
+\draw[navy,dashed,line width=0.5pt] (0,-36) -- (0,15.5);
+\node[lab,anchor=south east] at (-0.1,12.2) {expiry};
+% ---- lane 1: REST
+\fill[navy] (-15,-2.5) rectangle (0,2.5);
+\fill[navyL] (0,-2.5) rectangle (4.95,2.5);
+\fill[pattern=north east lines,pattern color=navyM] (4.95,-2.5) rectangle (5.1167,2.5);
+\draw[navyM,line width=0.3pt] (4.95,-2.5) rectangle (5.1167,2.5);
+\fill[navyXL] (5.1167,-2.5) rectangle (9,2.5);
+\node[lab,text=white] at (-7.5,0) {valid: 900\,s from issue};
+\node[lab] at (2.475,0) {accepted};
+\node[lab,text=greyD] at (7.06,0) {refused};
+\node[lab,anchor=south west,text=greyD] at (-15,2.8) {issued};
+% 200 and 401 marks
+\fill[navy] (4.95,6) circle (0.75mm); \draw[greyM,dashed,line width=0.3pt] (4.95,5.2) -- (4.95,2.5);
+\node[lab,anchor=east] at (4.75,6) {200 at +4:57};
+\draw[navy,line width=0.8pt] ($(5.1167,11)+(-0.8mm,-0.8mm)$) -- ($(5.1167,11)+(0.8mm,0.8mm)$) ($(5.1167,11)+(-0.8mm,0.8mm)$) -- ($(5.1167,11)+(0.8mm,-0.8mm)$);
+\draw[greyM,dashed,line width=0.3pt] (5.1167,10) -- (5.1167,2.5);
+\node[lab,anchor=west] at (5.35,11) {401 at +5:07};
+% tolerance bracket (timeout style)
+\draw[greyD,line width=0.4pt] (0,-4) -- (0,-5) -- (5,-5) -- (5,-4);
+\node[lab,anchor=north,text=greyD] at (2.5,-5.2) {tolerance 300\,s};
+% ---- lane 2: WebSocket replies, one tick per reply
+\draw[greyM,line width=0.3pt] (-11.42,-17) -- (9,-17);
+\foreach \i in {0,...,381}{\draw[navy,line width=0.25pt] ({-11.42+\i*0.05052},-19) -- ({-11.42+\i*0.05052},-15);}
+\node[lab,anchor=south west] at (-11.42,-14.6) {1 tick per reply, polled every 3\,s};
+\node[lab,anchor=south east] at (7.83,-14.6) {382 replies by the end};
+\draw[navy,line width=0.9pt] ($(8.3167,-17)+(-1mm,-1mm)$) -- ($(8.3167,-17)+(1mm,1mm)$) ($(8.3167,-17)+(-1mm,1mm)$) -- ($(8.3167,-17)+(1mm,-1mm)$);
+\node[lab,anchor=north east,align=right] at (9.2,-19.6) {new negotiation 07:30 (+8:19),\\ same token: 401};
+% ---- lane 3: refresh cookie
+\fill[navyM] (-15,-33) rectangle (9,-29);
+\draw[navyM,line width=1pt,-{Stealth[length=2mm]}] (9,-31) -- (10.1,-31);
+\node[lab,text=white,anchor=west] at (-14.7,-31) {set at login; expires 7 days later, 05:38:54 KST on 1 Dec; renewal leaves this expiry unchanged};
+% ---- axis
+\draw[greyM,line width=0.4pt] (-15,-38) -- (9,-38);
+\foreach \m/\t in {-15/−15,-12/−12,-9/−9,-6/−6,-3/−3,0/0,3/+3,6/+6,9/+9}{\draw[greyM] (\m,-38) -- (\m,-39); \node[lab,text=greyD,anchor=north] at (\m,-39) {\t};}
+\node[lab,text=greyD,anchor=north] at (-3,-42.2) {minutes after the access token's expiry};
+\end{tikzpicture}
+}{Shading: navy where the access token is valid, light navy where it has expired and is still accepted, hatched for the 10-second interval that holds the REST cut-off, pale where REST requests are refused. The tolerance edges come from the second test, made with another token than the WebSocket test, and are placed relative to its expiry; times were measured with the server's \code{Date} header, since our PC clock ran 3\,s ahead. The 401 carried \code{www-authenticate: Bearer error="invalid_token", error_description="The token expired at ..."} (UTC). Each WebSocket tick is one reply on the same connection; the tick positions are spread evenly between the first and last one-per-minute log lines of the test script. The X marks a refused request. Cookie expiry read from \code{Set-Cookie} before and after renewal.}{DART Quant Team}

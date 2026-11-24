@@ -1,0 +1,32 @@
+% OWNER: figs/layers.tex. Edit only this file.
+\fig[wide]{layers}{REST requests share one HTTP/2 connection; the live feed needs a second, WebSocket connection}[Protocol stack per channel, client side, from the application down to the connection set-up]{%
+\begin{tikzpicture}[x=1mm,y=1mm,
+  box/.style={draw=navy,line width=0.5pt,fill=white,minimum width=30mm,minimum height=8mm,inner sep=0pt,font=\fontsize{7.5}{9}\selectfont,anchor=north west},
+  lname/.style={anchor=west,align=left,font=\fontsize{7.5}{9}\selectfont\bfseries\color{navy}},
+  note/.style={anchor=west,align=left,text width=69mm,inner sep=0pt,font=\fontsize{7}{8.4}\selectfont\color{greyD}},
+  hd/.style={anchor=south,align=center,font=\fontsize{7.5}{9}\selectfont\bfseries\color{navy}}]
+% column heads
+\node[hd] at (58,-1.2) {REST\\[-0.5mm]{\fontsize{7}{8.4}\selectfont\mdseries\color{greyD}\code{/api}}};
+\node[hd] at (92,-1.2) {Live feed\\[-0.5mm]{\fontsize{7}{8.4}\selectfont\mdseries\color{greyD}\code{/hubs/main}}};
+% stacks: rows of 8 mm from y = -2
+\foreach \y/\n/\a/\b in {-2/Application/{REST API}/SignalR, -10/Framing/{HTTP/2 stream}/WebSocket, -18/HTTP/{HTTP/2}/{HTTP/1.1}, -26/TLS/{TLS 1.3}/{TLS 1.3}, -34/TCP/TCP/TCP}{
+  \node[box] at (43,\y) {\a};
+  \node[box] at (77,\y) {\b};
+  \node[lname] at (23,\y-4) {\n};
+}
+% DNS, before connecting
+\node[box,draw=greyD,dashed,minimum width=64mm] at (43,-45) {DNS};
+\node[lname,text=greyD] at (23,-49) {Before\\[-0.6mm]connecting};
+% bracket over TLS, TCP and DNS of both stacks
+\draw[navy,line width=0.6pt] (21.5,-26.3) -- (20,-26.3) -- (20,-52.7) -- (21.5,-52.7);
+\draw[navy,line width=0.6pt] (20,-39.5) -- (18.5,-39.5);
+\node[anchor=east,align=right,font=\fontsize{7}{8.4}\selectfont\bfseries\color{navy}] at (18,-39.5) {paid again\\on every new\\connection};
+% short notes, one per row
+\node[note] at (111,-6)  {REST: Bearer token on every request.\\Feed: token checked once, when the connection opens};
+\node[note] at (111,-14) {REST: one stream per request, many per connection.\\Feed: JSON records, each ended by 0x1E};
+\node[note] at (111,-22) {REST: chosen by ALPN. Feed: HTTP/2 POST to negotiate,\\then \code{Upgrade: websocket} on its own connection};
+\node[note] at (111,-30) {1 round trip; the feed runs its own handshake};
+\node[note] at (111,-38) {REST: closed by the server after 15 to 30\,s idle.\\Feed: kept open by a request every 3\,s};
+\node[note] at (111,-49) {\code{contest.timefolio.net} $\rightarrow$ 221.168.38.40};
+\end{tikzpicture}
+}{Each box is one protocol; both channels start from the same DNS lookup. Later REST requests open new HTTP/2 streams on the same connection and skip DNS, TCP and TLS. The live feed needs the second connection because the server's HTTP/2 SETTINGS frame lacks \code{ENABLE_CONNECT_PROTOCOL}, so WebSockets over HTTP/2 [1] are unavailable to any client, a browser included. On the server, an nginx front end passes requests to an ASP.NET application. The SETTINGS frame was read with Python's \code{h2} library; the front end is identified by its error page, the application by its error messages.}{DART Quant Team}

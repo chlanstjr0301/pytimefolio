@@ -259,7 +259,7 @@ if __name__ == "__main__":
     ap.add_argument("--live", action="store_true", help="실제로 주문을 보냄. 없으면 연습 모드")
     ap.add_argument("--monitor", action="store_true", help="주문은 보내지 않고 상태 변화만 기록 (이미 넣은 주문 추적용)")
     ap.add_argument("--jar", default="data/cookies/jar2.txt")
-    ap.add_argument("--pf", type=int, default=27032)
+    ap.add_argument("--pf", type=int, required=True, help="your portfolio ID (pfId)")
     ap.add_argument("--prod", default="A079550")          # LIG디펜스앤에어로스페이스
     ap.add_argument("--wei", type=float, default=0.3)     # 단위 %. 목표든 증분이든 소액
     ap.add_argument("--hm0", default="09:00")

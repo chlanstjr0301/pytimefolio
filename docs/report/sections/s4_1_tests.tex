@@ -1,0 +1,27 @@
+% OWNER: sections/s4_1_tests.tex. Edit only this file.
+\seclabel
+\claim{\secnum{4.1}{sec:wrappertests}\quad Start-up, feed, a buy and a sell worked; \code{plan()} needed a 100\% cap}
+
+\lead{The wrapper, built to the design of Section~\ref{sec:design}, ran against the live server from 09:27 to 09:55 KST on 24 Nov 2026, with the floor test of Section~\ref{sec:oneshare} at 10:26 and 10:33.} The package \code{pytimefolio} holds the modules of \figref{modules}. A strategy uses one class, \code{Timefolio}, from the \code{client} module (\figref{client}). Price arguments (\code{**price}) are \code{limit_prc}, \code{limit_idx} or \code{stop_prc}, exactly one of them, with optional \code{hm0} and \code{hm1} (\figref{orderapi}).
+
+\input{figs/client.tex}
+
+\lead{Entering the \code{async with} block runs 5 steps before the strategy gets control.} First, the client renews the access token from the cookie jar stored in \code{session.json} and logs in only if that renewal fails (D17). Second, it chooses the portfolio by the rule of Section~\ref{sec:queries}. Third, it starts the live feed as a background task and waits up to 30\,s for the first snapshot, so \code{weights()} never reads an empty state; afterwards every call that reads the state or places an order raises \code{StaleFeed} when the last feed reply is older than 26\,s (2 $\times$ 3\,s + 20\,s), so stale weights are never used. Fourth, it loads \code{Universe} once to learn each stock's sector (Section~\ref{sec:guidelines}). Fifth, it counts the day's orders in \code{Portfolio/Orders}, new orders plus stops, and seeds the daily cap with the larger of that number and its own count file, so a restart during the day does not reset the count to zero. Leaving the block cancels the feed task and closes the WebSocket and the HTTP client without calling \code{Logout} (D16).
+
+\Needspace{3\baselineskip}\lead{Each module passed its live test, and 24 offline tests cover the arithmetic and the failure paths that a live server cannot be made to produce (\figref{tests}).} 9 of the offline tests check pure functions; the other 15 replace the server with \code{httpx.MockTransport} and fakes and produce what the live server would not on demand: each error status, a lost \code{AddOrder} reply, a silent feed, 3 concurrent writes (seen 1.002\,s and 1.002\,s apart at the server) and a 403 or 429 followed by a 200. The note of \figref{tests} lists them. All 24 run on every push in GitHub Actions on Python 3.11 to 3.13.
+
+\input{figs/tests.tex}
+
+\lead{A code review after the first live tests found 7 defects in the order and feed paths, and all 7 are fixed in the code these tests ran.} The fixes are the behaviour already described: \code{wei} quantised once to 0.01\% and matched as sent, no automatic resend of an order and one lock across write and search (Section~\ref{sec:orders}); \code{StaleFeed} after 26\,s, reconnection with full-jitter backoff and the merge of \code{bs_updated} (Section~\ref{sec:feed}); the subtraction of working orders in \code{plan()} (Section~\ref{sec:guidelines}); and a daily count that includes stops and survives a restart, with the halt of all writes after a 403 or 429 (Section~\ref{sec:design}).
+
+\lead{The sell test settles how a sell is sent.} The wrapper's \code{sell()} sends the same \code{AddOrder} body as a buy with the exit code \code{ex} = X in place of E, and \code{ls} stays L. The server accepted it and recorded \code{sgn} = $-1$ with \code{qty2ord} 2, so a sell is an exit from a long position on the same side code. Section~\ref{sec:orders}'s orders were all buys; with this test both sides have been placed, found in the feed and stopped.
+
+\lead{The first \code{plan()} test found that a target set summing above 100\% passed through.} Water-filling moves the weight cut at a limit onto the other stocks and keeps the total unchanged, so a 139\% target stayed 139\% after capping and \code{plan()} would have asked for a portfolio worth 139\% of its value. \code{plan()} now raises \code{ValueError} before capping when the targets sum above \code{max_total}, 100\% by default (D19).
+
+\lead{By 10:34 the day's count stood at 9 new orders and 7 stops, and the wrapper's counter showed 16 of its 80 used.} Section~\ref{sec:orders}'s tests used 5 orders and 3 stops, the buy and the sell added 2 of each, and the floor test of Section~\ref{sec:oneshare} added 2 more of each; the tests of \code{plan()} and \code{guidelines()} sent none. Until the organiser says whether stops count (question Q2 of \figref{openq}, Section~\ref{sec:validity}), the wrapper counts a stop as an order, so 64 orders remain under its cap and the organiser's threshold of 100 is 84 away.
+
+\lead{The tests meet 3 of the 5 goals; G1 and G4 are still open (\figref{goalstatus}).} G1 needs the wrapper to stay logged in until 30 Nov, and the tests covered one morning: the second run renewed from the stored cookie jar without logging in, but no process has yet run past 720\,s and renewed inside the same run, and none has run for 7 days. G4, that polling never delays an order, has no outcome measure yet; the tests show only that the feed and the orders share one event loop. G2, G3 and G5 have passing live or offline tests.
+
+\input{figs/goalstatus.tex}
+
+\verdict{the wrapper's \code{plan()} rejects targets that sum above 100\% (D19). \code{sell()} sends \code{ls} = L with \code{ex} = X, as verified live (D21).}

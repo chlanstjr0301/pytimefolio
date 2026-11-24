@@ -1,0 +1,20 @@
+% OWNER: figs/orderapi.tex. Edit only this file.
+\fig[wide]{orderapi}{\code{AddOrder}, \code{CancelOrderBatch} and \code{Orders} were captured live; 3 paths seen only in client code are untested}[Paths under \code{/api/Portfolio} (top) and the price and timing fields of an order body (bottom), captured 09:16 to 09:22 KST on 24 Nov 2026]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{26mm} >{\RaggedRight\arraybackslash}p{9mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{40mm} >{\RaggedRight\arraybackslash}p{27mm}}
+\thd{Path} & \thd{Verb} & \thd{Parameters or body} & \thd{Reply} & \thd{Source}\\
+\hl\code{AddOrder} & POST & \code{d}, \code{pfId}, \code{prodId}, \code{ls}, \code{ex}, \code{wei}, \code{exitAll}, \code{limitPrc}, \code{limitIdx}, \code{stopPrc}, \code{hm0}, \code{hm1} & 200, \texttt{\{"data":"","warnings":[]\}}; no order ID & Live (sell form: Section~\ref{sec:wrappertests})\\\rowsep
+\hl\code{CancelOrderBatch} & POST & \code{d}, \code{pfId}, \code{ords}: order IDs joined by commas in one string, e.g.\ \code{"1650197"} & 200, empty body; the page labels it ``stop'' & Live\\\rowsep
+\hl\code{Orders} & GET & \code{d0}, \code{d1}, \code{pfId} & 200, every order of the range, \code{Done} ones included & Live\\\rowsep
+\code{ValidateProduct} & GET & \code{d}, \code{prodId}, \code{entry=true} & 200, \texttt{\{"data":"","warnings":[]\}} & Live\\\rowsep
+\code{Session} & GET & \code{d}, \code{pfId}; called when the order dialog opens & 200, window 09:00 to 15:20 & Live\\\rowsep
+\code{CancelOrder} & POST & \code{d}, \code{pfId}, \code{ordId} & Not observed & Client code, untested\\\rowsep
+\code{ModifyOrder} & POST & \code{d}, \code{ordId}, \code{wei}, \code{exitAll}, \code{limitPrc}, \code{limitIdx}, \code{stopPrc}, \code{hm0}, \code{hm1}; no \code{pfId} & Not observed & Client code, untested\\\rowsep
+\code{DeleteOrder} & POST & \code{d}, \code{pfId}, \code{ordId}; offered for un-accepted orders & Not observed & Client code, untested\\
+\end{tabularx}}\par\vspace{5pt}
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{26mm} >{\RaggedRight\arraybackslash}p{52mm} >{\RaggedRight\arraybackslash}X}
+\thd{Field} & \thd{Values} & \thd{Meaning}\\
+\code{limitPrc} & price, with \code{limitIdx} = null & Limit order at a fixed price\\\rowsep
+\code{limitIdx} & $n$ or $-n$, $n$ from 1 to 10 & $n$ ticks on the opposite side ($n$) or on the order's own side ($-n$)\\\rowsep
+\code{stopPrc} & price & Stop order\\\rowsep
+\code{hm0}, \code{hm1} & now and null; or start and end time & Immediate; or fills spread over the window from \code{hm0} to \code{hm1}\\
+\end{tabularx}}}{Highlighted rows: the 3 paths the wrapper uses to place, stop and list orders; it also calls \code{ValidateProduct} before each order and \code{Session} for the trading window. The 3 paths at the bottom of the top table appear only in the JavaScript bundle; the wrapper does not call them. ``Live'' means the request and reply were recorded from the page; ``client code'' means the body was read from the JavaScript bundle. The wrapper's order calls take exactly one of \code{limitPrc}, \code{limitIdx} and \code{stopPrc} (Section~\ref{sec:wrappertests}).}{Web client code, DART Quant Team}

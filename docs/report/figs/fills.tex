@@ -1,0 +1,27 @@
+% OWNER: figs/fills.tex. Edit only this file.
+\fig{fills}{7 shares filled in batches of 1 to 2 about every 2 minutes, ending at 09:08:07}[Shares filled (\code{cumQty}) of order 1649882 (LIG Nex1, \code{wei} 0.3), read from the live feed on 24 Nov 2026]{%
+\begin{tikzpicture}[x=0.15mm,y=4.6mm,font=\fontsize{7}{8.4}\selectfont]
+% x: seconds after 09:00 (0.15 mm per s); y: shares filled
+\fill[navyXL] (0,0) rectangle (600,7.6);
+% grid and axes
+\foreach \y in {1,...,7} \draw[greyM,line width=0.2pt] (-60,\y) -- (660,\y);
+\draw[greyD,line width=0.4pt] (-60,0) -- (660,0);
+\draw[greyD,line width=0.4pt] (-60,0) -- (-60,7.6);
+\foreach \y in {0,...,7} \node[anchor=east,text=greyD] at (-60,\y) {\y};
+\foreach \m/\l in {0/09:00,120/09:02,240/09:04,360/09:06,480/09:08,600/09:10}
+  {\draw[greyD] (\m,0) -- (\m,-0.18); \node[anchor=north,text=greyD] at (\m,-0.2) {\l};}
+\node[anchor=north,text=greyD] at (300,-1.05) {Time (KST)};
+\node[rotate=90,anchor=south,text=greyD] at (-128,3.5) {Shares filled of 7};
+\node[text=navy,align=center,fill=navyXL,inner sep=1pt] at (470,1.5) {order window\\09:00 to 09:10};
+% step line
+\draw[navy,line width=1pt] (-60,0) -- (30,0) -- (30,1) -- (129,1) -- (129,3) -- (250,3) -- (250,4) -- (370,4) -- (370,6) -- (487,6) -- (487,7) -- (660,7);
+% fill times
+\foreach \t/\n/\l in {30/1/09:00:30,129/3/09:02:09,250/4/09:04:10,370/6/09:06:10}
+  {\fill[navy] (\t,\n) circle (0.75mm); \node[anchor=south east,text=navy,inner sep=1.5pt] at (\t,\n) {\l};}
+\fill[navy] (487,7) circle (0.75mm);
+\node[anchor=north west,text=navy,inner sep=2pt,font=\fontsize{7}{8.4}\selectfont\bfseries] at (487,7) {09:08:07 \code{Done}};
+% position weight after each fill
+\node[anchor=east,text=greyD] at (-60,8.35) {Position weight (\%)};
+\foreach \t/\w in {30/0.17,129/0.26,250/0.30,370/0.38,487/0.43}
+  {\node[text=greyD] at (\t,8.35) {\w};}
+\end{tikzpicture}}{Each dot is a fill time read from the live feed, which was polled every 3\,s, so each time is accurate to $\pm$3\,s. Shading marks the order's window (\code{hm0} 09:00 to \code{hm1} 09:10); the order was \code{Working} from 08:33 and changed to \code{Done} with the last share, 7 min 37\,s after the first. The top row gives the position's weight in \% of net assets after each fill, counting the 3 shares held before the order. Average fill price KRW~352,714.29.}{Monitor log of the live feed, DART Quant Team}

@@ -1,0 +1,10 @@
+% OWNER: figs/replysizes.tex. Edit only this file.
+\fig{replysizes}{A delta is 1/17 of a snapshot before the open and about 1/8 during the session}[Size of one \code{ReceivePortfolio} reply in bytes, by reply type and time of day; 24 Nov 2026, polling every 3\,s]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}X R{26mm} R{50mm} R{14mm}}
+\thd{When} & \thd{Snapshot (\code{lastT=0})} & \thd{Delta (exact \code{t} echo)} & \thd{Ratio}\\
+\rowsep
+Before the open (before 09:00) & 9,915 & 577 (empty) & 17\\
+\rowsep
+During the session & 11,344 & 1,053 to 1,912 (mean about 1,400) & about 8\\
+\end{tabularx}}
+}{A snapshot holds balances (\code{bs}), orders (\code{ords}), positions (\code{pos}) and market sector weights (\code{msecs}) in full, plus 5 smaller top-level fields. In a delta those 4 fields are \code{null}; \code{pos_diff}, \code{ords_diff} and \code{msecs_diff} carry the records added, removed and updated, and \code{bs_updated} the changed balance fields. Before the open nothing changes, so the delta is empty. During the session \code{pos_diff.updated} listed 8 to 23 of the 23 holdings per reply, which sets the delta's range. Ratio = snapshot size divided by delta size (mean delta during the session).}{Python client on the live feed, DART Quant Team}

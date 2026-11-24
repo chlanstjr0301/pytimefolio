@@ -1,0 +1,17 @@
+% OWNER: figs/goals.tex. Edit only this file.
+\fig[wide]{goals}{5 goals and 5 non-goals bound the wrapper}[Scope of \code{pytimefolio}: each goal with the measure that shows it is met]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{7mm} >{\RaggedRight\arraybackslash}p{70mm} >{\RaggedRight\arraybackslash}X}
+\thd{ID} & \thd{Goal} & \thd{Measure of success}\\
+\hl G1 & Stay logged in for the whole contest without a person & No manual login between the start and 30 Nov; every renewal and login logged\\\rowsep
+G2 & Give the strategy the portfolio's current state & State no older than one poll (3\,s) and equal to a fresh snapshot after every delta; reads, orders and \code{wait_done()} refuse a state older than 26\,s (\code{StaleFeed})\\\rowsep
+G3 & Place, stop and track orders within the organiser's limits and the contest's guidelines & At most 80 orders a day (new orders plus stopped orders); at least 1\,s between writes; an order whose reply is lost is never resent; \code{plan()} refuses targets that break the total, universe, stock or sector rule\\\rowsep
+G4 & Polling never delays an order & Feed polling and orders share one event loop, and no order waits for a feed reply (Section~\ref{sec:live})\\\rowsep
+G5 & Stop on ambiguity instead of guessing & Raises \code{AmbiguousState} when the portfolio rule matches 0 entries or more than 1, when \code{currBizDay} differs from the KST date, or when a placed order is found neither in the feed within 15\,s nor in REST \code{Orders} (the order is not resent); raises \code{RequestError} on a 400\\
+\specialrule{0.8pt}{1pt}{1pt}
+\thd{ID} & \thd{Non-goal} & \thd{Reason}\\
+N1 & Market data (prices, order books) & The caller supplies prices; folding in another API adds another login and another set of limits\\\rowsep
+N2 & Strategy and portfolio construction & The wrapper turns target weights into orders; choosing targets is the caller's\\\rowsep
+N3 & Browser automation & Every action would wait on page rendering and break when the layout changes; the page's own HTTP requests take 16 to 39\ms{} (Section~\ref{sec:transport})\\\rowsep
+N4 & Several accounts or other participants' portfolios & One account per process; other participants' data is not ours to query\\\rowsep
+N5 & Probing rate limits & The organiser may block an IP address for bursts of traffic\\
+\end{tabularx}}}{G = goal, N = non-goal. Shaded: G1 is shown only by running until 30 Nov; the live tests of Section~\ref{sec:live} cover one morning. The 80-order cap leaves a margin of 20 under the organiser's threshold of 100 orders a day.}{DART Quant Team}

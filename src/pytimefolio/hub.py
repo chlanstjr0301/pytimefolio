@@ -15,15 +15,20 @@ import random
 import time
 from typing import AsyncIterator
 
+import ssl
+
+import certifi
 import websockets
 
 from .auth import Auth
-from .errors import StaleFeed
+from .errors import BlockedError, StaleFeed
 from .state import PortfolioState
 
 log = logging.getLogger("pytimefolio.hub")
 RS = "\x1e"
 WS_URL = "wss://contest.timefolio.net/hubs/main"
+# httpx 처럼 certifi 인증서를 쓴다. python.org macOS Python 은 기본 CA 가 비어 있어 검증에 실패한다
+SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
 
 class Hub:
@@ -41,7 +46,7 @@ class Hub:
         ctoken = r.json()["connectionToken"]
         tok = await self.a.token()               # negotiate 가 401 로 갱신을 일으켰을 수 있으므로 그 뒤에 읽는다
         self.ws = await websockets.connect(f"{WS_URL}?id={ctoken}",
-                                           additional_headers={"Authorization": f"Bearer {tok}"},
+                                           additional_headers={"Authorization": f"Bearer {tok}"}, ssl=SSL_CTX,
                                            max_size=2 ** 22, ping_interval=None)   # SignalR 자체 ping(type 6)을 쓴다
         await self.ws.send(json.dumps({"protocol": "json", "version": 1}) + RS)
         hs = json.loads((await asyncio.wait_for(self.ws.recv(), 10)).split(RS)[0])
@@ -61,8 +66,13 @@ class Hub:
                "arguments": [{"intv": int(self.interval), "auto": True, "lastT": self._last_t,
                               "d": self.a.biz_day, "pfId": self.pf_id}]}
         await self.ws.send(json.dumps(req) + RS)
+        # 기한은 요청 하나에 하나: 서버 ping(15 s 마다)이 와도 늘어나지 않는다
+        deadline = time.monotonic() + self.reply_timeout
         while True:
-            frame = await asyncio.wait_for(self.ws.recv(), self.reply_timeout)
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TimeoutError(f"ReceivePortfolio 응답 없음 ({self.reply_timeout:.0f} s)")
+            frame = await asyncio.wait_for(self.ws.recv(), left)
             for raw in filter(None, frame.split(RS)):
                 m = json.loads(raw)
                 typ = m.get("type")
@@ -98,6 +108,13 @@ class Hub:
                 kind = await self.poll_once()
                 self.failures = 0
             except asyncio.CancelledError:
+                raise
+            except BlockedError:                                      # 403/429: 다시 붙지 않고 멈춘다
+                log.error("허브 요청이 차단됨 -> 재연결하지 않음")
+                try:
+                    await self.close()
+                except Exception:
+                    self.ws = None
                 raise
             except Exception as e:                                    # 502, 401, 잘못된 JSON 까지 전부 재연결
                 try:

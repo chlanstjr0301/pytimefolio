@@ -1,0 +1,12 @@
+% OWNER: figs/summary.tex. Edit only this file.
+\fig[wide]{summary}{Each layer was measured live, and each finding fixes the decisions listed in Appendix~B}[Main finding per section and the decisions it supports (D-numbers of Appendix~\ref{app:decisions})]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{27mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{29mm}}
+\thd{Layer} & \thd{Finding} & \thd{Decisions}\\
+\textbf{\ref{sec:transport} Transport} & A request takes 106.5\ms{} on a new HTTP/2 connection and 16.0\ms{} on a reused one; the server closes an idle connection after 15 to 30\,s & D1, D2, D18\\\rowsep
+\textbf{\ref{sec:auth} Login session} & The access token lasts 900\,s and is accepted 300\,s past expiry; the cookie jar lasts 7 days, renewal never extends it and \code{Logout} revokes nothing & D3 to D5, D16, D17, D26, D35, D36\\\rowsep
+\textbf{\ref{sec:queries} Queries} & A Bearer header authenticates every query; a non-trading date returns another day's data with HTTP~200 & D6, D7, D27\\\rowsep
+\textbf{\ref{sec:feed} Live feed} & The feed answers only when asked (every 3\,s); an exact \code{t} echo gets a 1,053 to 1,912-byte delta instead of the 11,344-byte snapshot; an open WebSocket outlives its token & D8, D9, D14, D30, D31\\\rowsep
+\textbf{\ref{sec:orders} Orders} & \code{AddOrder} returns no order ID; \code{wei} is the order size (0.3\% asked for 7 shares); every finished order ends in \code{Done} & D11, D13, D15, D29\\\rowsep
+\textbf{\ref{sec:design} Wrapper design} & Direct HTTP with asyncio keeps one login session; strategy and market data stay with the caller; the organiser may block an IP address at 100 orders a day & D10, D12, D33, D34\\\rowsep
+\textbf{\ref{sec:live} Live tests} & Start-up, feed, a buy and a sell worked; \code{qty2ord} rounds down (1.76 shares' worth gave 1); \code{plan()} needed a 100\% cap and a sector check & D19 to D25, D28, D32\\
+\end{tabularx}}}{Measured 05:38 to 10:34 KST on 24 Nov 2026 with one account; the market opened at 09:00. Timings in Section~\ref{sec:transport} were taken before the open.}{DART Quant Team}

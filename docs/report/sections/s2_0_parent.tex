@@ -1,0 +1,5 @@
+% OWNER: sections/s2_0_parent.tex. Edit only this file.
+\seclabel
+\claim{\secnum{2}{sec:layers}\quad Five protocol layers, each measured live, fix the wrapper's parameters}
+
+\lead{Every timeout, interval and size the wrapper uses comes from a measurement against the live server between 05:38 and 10:34 KST on 24 Nov 2026.} With no documentation from the organiser, the alternative to measuring is guessing, and Section~\ref{sec:queries} shows that the server answers a wrong guess with HTTP 200. Each subsection measures one layer and ends with the parameters it fixes: \ref{sec:transport} the transport (a reused connection, 16.0\ms{} against 106.5\ms), \ref{sec:auth} authentication (a 900\,s access token and a 7-day cookie jar), \ref{sec:queries} queries (dates taken from the server), \ref{sec:feed} the live feed (a 3\,s poll and deltas) and \ref{sec:orders} orders (placement, confirmation and size). The server can change these behaviours at any time; Section~\ref{sec:validity} lists the ones the wrapper checks before each order.

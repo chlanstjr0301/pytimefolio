@@ -115,7 +115,7 @@ async def main(pf_id: int, n: int, echo_lastT: bool, intv: float,
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pf", type=int, default=27032)
+    ap.add_argument("--pf", type=int, required=True, help="your portfolio ID (pfId)")
     ap.add_argument("--n", type=int, default=5)
     ap.add_argument("--echo-lastT", action="store_true",
                     help="직전 응답의 t를 다음 lastT로 보냄 (브라우저와 같은 방식)")

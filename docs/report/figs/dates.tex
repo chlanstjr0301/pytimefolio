@@ -1,0 +1,9 @@
+% OWNER: figs/dates.tex. Edit only this file.
+\fig{dates}{Weekend and future dates return another day's data without an error}[\code{Portfolio/Violations} replies by requested date, 2026 (server business day: 23 Nov)]{%
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{44mm} R{12mm} R{11mm} >{\RaggedRight\setlength{\leftskip}{3mm}\arraybackslash}X}
+\thd{Requested date} & \thd{HTTP} & \thd{Bytes} & \thd{Day the server used, and the evidence}\\
+22 Nov (Sunday) & 200 & 400 & 20 Nov, the previous trading day: the small-cap weight is 3.21\%, against 3.33\% on 23 Nov\\\rowsep
+23 Nov (current day) & 200 & 400 & 23 Nov\\\rowsep
+24 Nov (next trading day) & 200 & 400 & 23 Nov, the latest: byte-for-byte identical to the 23 Nov reply\\\rowsep
+25 Dec (holiday, after the contest) & 200 & 342 & No day: every value is zero\\
+\end{tabularx}}}{HTTP: status code of the reply. Bytes: reply body size. Replies compared with \code{cmp}; where they differed, we printed the differing fields. All 4 requests succeed, so a caller cannot tell from the status which day the data belong to.}{DART Quant Team}
