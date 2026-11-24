@@ -6,7 +6,7 @@ from pytimefolio.orders import round_to_tick
 async def main():
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(name)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    async with Timefolio(ctst_id=91, allow_untested=True) as tf:
+    async with Timefolio(ctst_id=91) as tf:
         lig = tf.positions()["A079550"]
         px = round_to_tick(lig["close"] * 1.2, down=False)
         print(f"LIG 보유 {lig['pos']}주 {lig['wei']}% | 현재가 {lig['close']} -> 매도 지정가 {px}")

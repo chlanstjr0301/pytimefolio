@@ -26,12 +26,12 @@ log = logging.getLogger("pytimefolio")
 class Timefolio:
     def __init__(self, ctst_id: int, email: str | None = None, password: str | None = None,
                  session_file: Path | str = DEFAULT_SESSION, daily_cap: int = 80,
-                 allow_untested: bool = False, feed_interval: float = 3.0):
+                 feed_interval: float = 3.0):
         self.ctst_id = ctst_id
         self.t = Transport()
         self.auth = Auth(self.t, email, password, session_file)
         self.rest = Rest(self.auth)
-        self._daily_cap, self._allow_untested, self._interval = daily_cap, allow_untested, feed_interval
+        self._daily_cap, self._interval = daily_cap, feed_interval
         self.hub: Hub | None = None
         self.orders: Orders | None = None
         self._feed_task: asyncio.Task | None = None
@@ -43,7 +43,7 @@ class Timefolio:
         await self.auth.start()
         pf = self.rest.select_portfolio(self.ctst_id)
         self.hub = Hub(self.auth, pf, interval=self._interval)
-        self.orders = Orders(self.rest, self.hub, self._daily_cap, allow_untested=self._allow_untested)
+        self.orders = Orders(self.rest, self.hub, self._daily_cap)
         self._feed_task = asyncio.create_task(self._feed(), name="pytimefolio-feed")
         await asyncio.wait_for(self._first.wait(), 30)
         self.sec_of = {u["Id"]: str(u["sec"]) for u in await self.rest.universe()}

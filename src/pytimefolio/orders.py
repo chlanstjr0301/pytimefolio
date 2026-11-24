@@ -126,10 +126,9 @@ def target_to_orders(targets: dict[str, float], current: dict[str, float], min_w
 
 # ---------------------------------------------------------------- 주문 게이트
 class Orders:
-    def __init__(self, rest: Rest, hub: Hub, daily_cap: int = 80, min_interval: float = 1.0,
-                 allow_untested: bool = False):
+    def __init__(self, rest: Rest, hub: Hub, daily_cap: int = 80, min_interval: float = 1.0):
         self.r, self.hub = rest, hub
-        self.daily_cap, self.min_interval, self.allow_untested = daily_cap, min_interval, allow_untested
+        self.daily_cap, self.min_interval = daily_cap, min_interval
         self._write_lock = asyncio.Lock()
         self._last_write = 0.0
 

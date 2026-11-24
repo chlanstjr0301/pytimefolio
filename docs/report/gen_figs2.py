@@ -1,7 +1,8 @@
 import os, sys, json
-OUT="/home/claude/tf-report/figs"
+HERE=os.path.dirname(os.path.abspath(__file__))
+OUT=os.path.join(HERE,"figs")
 def w(name, s): open(os.path.join(OUT,name),"w",encoding="utf-8").write(s)
-P=json.load(open("/home/claude/data/tol.json")) if os.path.exists("/home/claude/data/tol.json") else {"lo":210,"hi":337,"lo_lab":"200 at about 06:00","hi_lab":"401 at 06:02:10"}
+P=json.load(open(os.path.join(HERE,"data","tol.json"))) if os.path.exists(os.path.join(HERE,"data","tol.json")) else {"lo":210,"hi":337,"lo_lab":"200 at about 06:00","hi_lab":"401 at 06:02:10"}
 LO,HI=P["lo"],P["hi"]          # seconds after expiry: last 200 seen, first 401 seen
 # ---------------------------------------------------------------- Fig 6 token timeline (base 05:38, 4.0 mm/min)
 def x6(h,m,s=0): return ((h*60+m+s/60)-(5*60+38))*4.0

@@ -1,9 +1,11 @@
+import os
 import statistics as st, os
-OUT="/home/claude/tf-report/figs"
+HERE=os.path.dirname(os.path.abspath(__file__))
+OUT=os.path.join(HERE,"figs")
 def w(name, s): open(os.path.join(OUT,name),"w",encoding="utf-8").write(s)
 F=r"\fontsize{%s}{%s}\selectfont"
 # ---------------------------------------------------------------- data for timing (10 runs)
-R=[l.split() for l in open('/home/claude/data/timing_0603.txt')]
+R=[l.split() for l in open(os.path.join(HERE,'data','timing_0603.txt'))]
 first=[[float(x)*1000 for x in r[3:]] for r in R if r[2]=='1']
 reuse=[float(r[7])*1000 for r in R if r[2]=='0']
 stages={"DNS lookup":[f[0] for f in first],"TCP connect":[f[1]-f[0] for f in first],"TLS handshake":[f[2]-f[1] for f in first],
@@ -72,4 +74,4 @@ for v in (0,40,80,120,160):
     fig4.append(rf"\draw[greyM] ({x0+v*sc:.2f},{ya}) -- ({x0+v*sc:.2f},{ya-1}); \node[font=\fontsize{{6}}{{7}}\selectfont,text=greyD,anchor=north] at ({x0+v*sc:.2f},{ya-1}) {{{v} ms}};")
 fig4.append(r"\end{tikzpicture}")
 w("fig04.tex","\n".join(fig4))
-open('/tmp/med.txt','w').write(repr({k:round(v,1) for k,v in med.items()}))
+print({k:round(v,1) for k,v in med.items()})

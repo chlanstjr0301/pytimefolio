@@ -4,6 +4,10 @@ Unofficial asyncio API wrapper for Timefolio's **Road to Fund Manager** paper-tr
 (`contest.timefolio.net`). It reproduces the requests the contest's own web client makes; every
 behaviour it relies on was measured and is documented in [`report/main.pdf`](report/main.pdf).
 
+> **Unofficial.** Timefolio publishes no API and does not support this package. The organiser has
+> told us that automated orders are not prohibited; check the current contest rules yourself before
+> using it.
+
 The organiser has stated that automated orders are not prohibited, but an account placing 100 or
 more orders a day, or sending bursts of traffic, may have its IP address blocked. The wrapper caps
 itself at 80 orders a day and spaces write requests 1 s apart. Do not lower these limits.
@@ -11,9 +15,20 @@ itself at 80 orders a day and spaces write requests 1 s apart. Do not lower thes
 ## Install
 
 ```bash
-python -m venv ~/.venvs/tf && . ~/.venvs/tf/bin/activate   # keep the venv on the Linux side under WSL
+git clone https://github.com/chlanstjr0301/pytimefolio && cd pytimefolio
+python -m venv ~/.venvs/tf && . ~/.venvs/tf/bin/activate   # under WSL keep the venv on the Linux side
 pip install -e .
 ```
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `src/pytimefolio/` | the package: `transport`, `auth`, `rest`, `state`, `hub`, `orders`, `client` |
+| `examples/` | `quickstart.py`, `guidelines.py`, `rebalance_dry_run.py` (none sends orders) |
+| `tests/` | offline unit tests; `tests/live/` holds checks against the real server |
+| `research/` | the measurement scripts behind the report |
+| `docs/report/` | the report (LaTeX source and PDF); `docs/api.md` lists the endpoints |
 
 ## Use
 
@@ -52,5 +67,8 @@ server, so treat this file like a password and keep it out of the repository.
 ## Tests
 
 ```bash
-python -m unittest discover -v tests     # offline, no server needed
+python -m unittest discover -v tests     # offline, no server needed; this is what CI runs
 ```
+
+`tests/live/` holds scripts that use your account against the real server; two of them place
+(and immediately stop) real orders. See `tests/live/README.md`.

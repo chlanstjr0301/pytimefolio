@@ -24,3 +24,12 @@ report/*.aux
 report/*.log
 report/*.out
 report/*.bak
+docs/memo.md
+*.egg-info/
+build/
+dist/
+docs/report/*.aux
+docs/report/*.log
+docs/report/*.out
+docs/report/*.bak
+docs/report/pg-*.png
