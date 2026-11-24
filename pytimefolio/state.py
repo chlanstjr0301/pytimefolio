@@ -12,6 +12,9 @@ from __future__ import annotations
 import copy
 
 
+_KNOWN = {"t", "kstNow", "bs", "pos", "ords", "msecs", "pos_diff", "ords_diff", "msecs_diff"}
+
+
 def _key(rec: dict):
     for k in ("Id", "id", "sec"):
         if k in rec:
@@ -31,6 +34,7 @@ class PortfolioState:
         self.msecs: dict = {}                  # 키 -> 시장 섹터 비중
         self.t: int | None = None              # 마지막 응답의 t (해석하지 않고 되돌려 보내기만 한다)
         self.kst_now: str | None = None
+        self.extra: dict = {}                  # 그 밖의 최상위 필드 (cmpl: 회전율, tags: 소형주 표시 등)
         self.snapshots = 0
         self.diffs = 0
 
@@ -45,12 +49,16 @@ class PortfolioState:
             self.pos = {_key(r): r for r in p.get("pos") or []}
             self.ords = {_key(r): r for r in p.get("ords") or []}
             self.msecs = {_key(r): r for r in p.get("msecs") or []}
+            self.extra = {k: v for k, v in p.items() if k not in _KNOWN}
             self.snapshots += 1
             return "full"
         if p.get("bs") is not None:
             self.bs = p["bs"]
         for name, store in (("pos_diff", self.pos), ("ords_diff", self.ords), ("msecs_diff", self.msecs)):
             self._apply_diff(store, p.get(name))
+        for k, v in p.items():                 # 증분에 실려 온 그 밖의 필드는 null 이 아니면 덮어쓴다
+            if k not in _KNOWN and not k.endswith("_diff") and v is not None:
+                self.extra[k] = v
         self.diffs += 1
         return "diff"
 

@@ -212,7 +212,9 @@ The server's business day also differs from the calendar after midnight. \code{c
 
 \lead{During the session a delta is about one eighth of a snapshot.} At 3\,s polling the snapshot grew to 11,344 bytes (9,915 before the open) and deltas ran from 1,053 to 1,912 bytes, about 1.4\,kB on average, against one seventeenth of a snapshot for the empty deltas before the open. \code{pos_diff.updated} listed 8 to 23 of the 23 holdings per reply, and \code{msecs_diff} changed about every fourth reply (about 12\,s). \code{t} advanced by 3 per reply and sometimes by 4, so it follows wall-clock seconds.
 
-\lead{\code{updated} carries only the changed fields of each record, keyed by the record's \code{Id} as a string.} Two entries from one reply read \code{"5745534": {"close": 89900, "prft": 1008000}} and \code{"5745535": {"close": 1180000, "prft": 3230000, "chPct": 8.76, "wei": 4.86}}: 2 to 4 of the 28 keys a position record has in a snapshot (Appendix~A lists all 28). \code{ords_diff} has the same form, for example \code{{"added": [], "removed": [], "updated": {"1649882": {"cumQty": 6, "avgPx": 352416.67}}, "ords_chgd": {}}}. Snapshot records carry \code{Id} as an integer, so a delta key used as it arrives would match no record; the wrapper converts each key with \code{int()} before merging. The keys are position record IDs, not tickers (\code{prodId}), so the wrapper also keeps an index from \code{prodId} to \code{Id}. We have not yet checked that the state merged from deltas equals a fresh snapshot.
+\lead{\code{updated} carries only the changed fields of each record, keyed by the record's \code{Id} as a string.} Two entries from one reply read \code{"5745534": {"close": 89900, "prft": 1008000}} and \code{"5745535": {"close": 1180000, "prft": 3230000, "chPct": 8.76, "wei": 4.86}}: 2 to 4 of the 28 keys a position record has in a snapshot (Appendix~A lists all 28). \code{ords_diff} has the same form, for example \code{{"added": [], "removed": [], "updated": {"1649882": {"cumQty": 6, "avgPx": 352416.67}}, "ords_chgd": {}}}. Snapshot records carry \code{Id} as an integer, so a delta key used as it arrives would match no record; the wrapper converts each key with \code{int()} before merging. The keys are position record IDs, not tickers (\code{prodId}), so the wrapper also keeps an index from \code{prodId} to \code{Id}.
+
+\lead{Merging deltas this way reproduces the server's state exactly, so goal G2 is met.} At 09:35 two connections polled the hub at the same moments for 15 rounds. Connection A applied deltas, merging the \code{updated} fields by \code{int(Id)}; connection B asked for a full snapshot every round (\code{lastT=0}). In all 15 rounds both connections received the same \code{t}, and A's accumulated \code{pos} and \code{ords} records equalled B's snapshot field for field: 0 differences in 15 of 15 rounds. An earlier check compared the merged state with a snapshot taken about 3\,s after the last delta and found 13 records that differed only in \code{close}, \code{prft}, \code{wei} and \code{chPct}, the fields that move with prices in 3\,s; comparing replies with the same \code{t} removes that gap.
 
 \lead{We tested three rules for when the server sends a delta.} (a) \code{lastT} matches the \code{t} last sent on this connection; (b) \code{lastT} is any recent time; (c) \code{lastT} matches the \code{t} last sent to this account, on any connection. We varied \code{lastT} over eleven requests on two connections so that the rules predicted different replies (\figref{12}).
 
@@ -247,7 +249,7 @@ poll(hub):\\
 \hspace*{8mm}if p $\neq$ null: lastT $\leftarrow$ p.t\hspace{3mm}{\rmfamily\color{greyD}// echoed, not read}\\
 \hspace*{8mm}await sleep(3)\\
 \hspace*{4mm}on reconnect: renew token if expired; negotiate; lastT $\leftarrow$ 0
-\end{minipage}}{\code{updated} keys are record \code{Id}s sent as strings; snapshot \code{Id}s are integers, hence \code{int(i)}. $\mid$= merges a dict of changed fields into the stored record. Whether the merged state equals a fresh snapshot is still to be checked (Q2 in \figref{22}).}{DART Quant Team}
+\end{minipage}}{\code{updated} keys are record \code{Id}s sent as strings; snapshot \code{Id}s are integers, hence \code{int(i)}. $\mid$= merges a dict of changed fields into the stored record. In a 15-round test against snapshots with the same \code{t} on a second connection, the merged \code{pos} and \code{ords} records matched field for field in every round (Section~2.4).}{DART Quant Team}
 \verdict{the wrapper's receive loop keeps one request in flight. A snapshot replaces the state, a delta merges its changed fields into the records found by \code{int(Id)}, and an empty reply resets \code{lastT}. \code{t} is an opaque value to echo; when a time is needed, the wrapper reads \code{kstNow}. Every server timestamp becomes a timezone-aware KST time on arrival. The WebSocket authenticates with a header, so the token stays out of URLs and access logs. Token renewal does not reconnect the WebSocket; a reconnection always renews the token first if it has expired.}
 
 % =====================================================================================================
@@ -277,7 +279,7 @@ N5 & Probing rate limits & The organiser may block an IP address for bursts of t
 
 \lead{Every hard number in the design comes from a measurement or from the organiser (\figref{16}).} Where the server sets a limit, the wrapper sets its own a step inside it, so that a small change on the server side does not break the wrapper.
 
-\Needspace{62mm}\figblock[wide]{16}{Each constraint sets one parameter, a margin inside the measured limit}[Constraints and the wrapper parameters they set]{%
+\Needspace{95mm}\figblock[wide]{16}{Each constraint sets one parameter, a margin inside the measured limit}[Constraints and the wrapper parameters they set]{%
 {\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{50mm} >{\RaggedRight\arraybackslash}p{22mm} >{\RaggedRight\arraybackslash}X}
 \thd{Constraint} & \thd{Source} & \thd{Wrapper parameter}\\
 Fewer than 100 orders a day per account & Organiser & Daily order cap 80, counted across restarts\\\rowsep
@@ -386,20 +388,19 @@ Retry of a failed order & Resend at once: risks a duplicate, since the reply has
 \lead{The day's tests used 5 orders and 3 stops, far below the organiser's threshold of 100.} The 08:30 LIG Nex1 order came from our script and filled. Two Samsung Electronics orders were placed by hand: one of 0.1\% at 09:13 (\code{qty2ord} 4), which we stopped, and one of 0.3\% at 09:15 at 10 ticks on the opposite side, which filled 13 of 13 shares. Two more Samsung orders of 0.1\% (\code{qty2ord} 4 each) with a limit of KRW~151,800, 20\% below the market so that they could not fill, were placed at 09:18 (immediate) and 09:20 (window 15:00 to 15:20) to capture the requests, and both were stopped within a minute.
 \verdict{the wrapper places orders with \code{AddOrder} and confirms each one by finding it in the feed's \code{ords}, or in \code{Orders} after a lost reply, by ticker, side and time. It stops orders through \code{CancelOrderBatch}, joining IDs with commas, and treats an order as finished when \code{state} is \code{Done}, as stopped when \code{cnclT} is set as well, and as partly filled when a stopped order has 0~$<$~\code{cumQty}~$<$~\code{qty2ord}. \code{ModifyOrder} and \code{DeleteOrder} stay out of the wrapper until their bodies have been tested live; until then an amendment is a stop followed by a new order, which counts as one more order against the daily cap.}
 
-\figblock[wide]{22}{Five questions remain: four can be settled by tests, one only by the organiser}[Open questions and how each will be settled]{%
+\figblock[wide]{22}{Four questions remain: three can be settled by tests, one only by the organiser}[Open questions and how each will be settled]{%
 {\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{7mm} >{\RaggedRight\arraybackslash}X >{\RaggedRight\arraybackslash}p{62mm}}
 \thd{} & \thd{Question} & \thd{How it will be settled}\\
 Q1 & Do the \code{ModifyOrder} and \code{DeleteOrder} bodies taken from the client code work? & Capture when the page offers them for an un-accepted order\\\rowsep
-Q2 & Does the state merged from deltas equal a fresh snapshot exactly? & Merge deltas through a session and compare with a snapshot taken on a second connection\\\rowsep
-Q3 & Does the 100-order threshold count stops and amendments? & Ask the organiser\\\rowsep
-Q4 & Does a password change revoke existing refresh tokens? & Change the password, then renew with a cookie jar saved before the change\\\rowsep
-Q5 & When do the states \code{Generated}, \code{Accepted} and \code{Deleted} appear? & Log every state change in \code{ords}, including orders the server refuses\\
-\end{tabularx}}}{Settled during the session on 24 Nov: whether the hub pushes (2.4), the format of \code{updated} (2.4), parallel renewal (2.2), the \code{Orders} parameters (2.3) and the final state of filled and stopped orders (4).}{DART Quant Team}
+Q2 & Does the 100-order threshold count stops and amendments? & Ask the organiser\\\rowsep
+Q3 & Does a password change revoke existing refresh tokens? & Change the password, then renew with a cookie jar saved before the change\\\rowsep
+Q4 & When do the states \code{Generated}, \code{Accepted} and \code{Deleted} appear? & Log every state change in \code{ords}, including orders the server refuses\\
+\end{tabularx}}}{Settled during the session on 24 Nov: whether the hub pushes (2.4), the format of \code{updated} and the exactness of the delta merge (2.4), parallel renewal (2.2), the \code{Orders} parameters (2.3) and the final state of filled and stopped orders (4).}{DART Quant Team}
 
 % =====================================================================================================
 % APPENDICES
 % =====================================================================================================
-\seclabel
+\par\Needspace{120mm}\seclabel
 \claim{Appendix A\quad Glossary}
 {\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}X}
 \thd{Term} & \thd{Meaning in this report}\\
@@ -441,7 +442,7 @@ D10 & Cap 80 orders a day, 1\,s between writes & Organiser's reply (1) & Organis
 D11 & Never resend an order blindly & \code{AddOrder} reply has no ID (4) & Reply starts carrying an ID\\\rowsep
 D12 & Market data out of scope & Separate API and limits (3) & \\\rowsep
 D13 & Order \code{wei} = target $-$ current weight & \code{qty2ord} = 7 for \code{wei} 0.3 with 0.13\% held (4) & \\\rowsep
-D14 & Merge deltas by \code{int(Id)}, changed fields only & \code{updated} keyed by string \code{Id}, 2 to 4 of 28 keys (2.4) & Merged state differs from a snapshot (Q2)\\\rowsep
+D14 & Merge deltas by \code{int(Id)}, changed fields only & \code{updated} keyed by string \code{Id}, 2 to 4 of 28 keys; merged state equalled same-\code{t} snapshots in 15 of 15 rounds (2.4) & Merged state differs from a snapshot\\\rowsep
 D15 & Finished $=$ \code{Done}; stopped if \code{cnclT} set; partly filled if also 0~$<$~\code{cumQty}~$<$~\code{qty2ord} & Three stopped orders \code{Done} with \code{cnclT} and \code{cumQty} 0 of 4 (4) & Server adds a stopped state\\\rowsep
 D16 & No Logout on shutdown; jar outside the repository, mode 0600 & Logout revokes nothing; saved jar still renews (2.2) & Logout starts revoking tokens\\\rowsep
 D17 & Never log in while the stored session works; log in when renewal fails & Each login adds a 7-day session (2.2) & Sessions become revocable\\\rowsep

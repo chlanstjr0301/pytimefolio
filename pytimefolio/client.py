@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import statistics
 from pathlib import Path
 
 from .auth import Auth, DEFAULT_SESSION
@@ -115,11 +116,77 @@ class Timefolio:
     async def wait(self, order_id: int, timeout: float | None = None) -> Result:
         return await self.orders.wait_done(order_id, timeout)
 
-    def plan(self, targets: dict[str, float], min_wei: float = 0.05, **price) -> list[Order]:
-        """목표 비중(%) -> 주문 목록 (보내지 않는다). 보유 종목의 weiLimit 으로 먼저 자른다."""
+    # ---------------------------------------------------------------- 1주의 비중
+    def nav(self) -> float:
+        """NAV(원). 피드 bs.na 를 쓰고, 없으면 보유 종목의 평가액 / 비중 중앙값으로 역산한다.
+        (2026-11-24 실측: bs.na 837,002,427 / 역산 836,798,658, 차이 0.02%)"""
+        na = (self.state.bs or {}).get("na")
+        if isinstance(na, (int, float)) and na > 0:
+            return float(na)
+        ests = [float(r["pos"]) * float(r["close"]) * 100 / float(r["wei"])
+                for r in self.positions().values() if r.get("pos") and r.get("close") and r.get("wei")]
+        if not ests:
+            raise TimefolioError("보유 종목이 없어 NAV 를 역산할 수 없음")
+        return statistics.median(ests)
+
+    def share_weight(self, prod_id: str, price: float | None = None) -> float | None:
+        """1주가 NAV 의 몇 % 인가. 보유 종목은 피드 가격, 새 종목은 호출자가 준 가격으로 계산."""
+        r = self.positions().get(prod_id)
+        px = price if price is not None else (float(r["close"]) if r and r.get("close") else None)
+        return None if px is None else px * 100 / self.nav()
+
+    def plan(self, targets: dict[str, float], min_wei: float = 0.05, max_total: float = 100.0,
+             prices: dict[str, float] | None = None, **price) -> list[Order]:
+        """목표 비중(%) -> 주문 목록 (보내지 않는다). 보유 종목의 weiLimit 으로 먼저 자른다.
+        목표 합계가 max_total(%)을 넘으면 거부한다. 한도로 잘린 비중은 다른 종목에 나눠지므로 합계는 그대로다."""
+        total = sum(max(0.0, v) for v in targets.values())
+        if total > max_total + 1e-9:
+            raise ValueError(f"목표 비중 합계 {total:.2f}% > {max_total}%")
         caps = {p: float(r["weiLimit"]) for p, r in self.positions().items() if r.get("weiLimit") is not None}
         capped = cap_weights(targets, {k: v for k, v in caps.items() if k in targets})
-        return target_to_orders(capped, self.weights(), min_wei=min_wei, **price)
+        orders = target_to_orders(capped, self.weights(), min_wei=min_wei, **price)
+        # 서버는 주식 수를 내림하므로 1주 비중보다 작은 주문은 0주가 된다 -> 미리 뺀다
+        kept, self.dropped = [], []
+        for o in orders:
+            sw = self.share_weight(o.prod_id, (prices or {}).get(o.prod_id))
+            if sw is None:
+                log.warning("%s: 가격을 몰라 1주 비중을 확인하지 못함 (prices= 로 넘기면 확인)", o.prod_id)
+            elif o.wei < sw:
+                log.warning("%s: 주문 %.3f%% < 1주 %.3f%% -> 0주가 되므로 뺌", o.prod_id, o.wei, sw)
+                self.dropped.append(o)
+                continue
+            kept.append(o)
+        return kept
+
+    # ---------------------------------------------------------------- 가이드라인
+    async def guidelines(self) -> dict:
+        """대회 가이드라인 현황. 피드 값으로 계산하고, 서버의 Violations 응답도 함께 돌려준다.
+        - 종목: weiLimit 이하 (삼성전자 40, 그 밖 15)
+        - 섹터: max(시장 섹터 비중 x 2, 10%) 이하
+        - 시총 1조 미만(SmallCap) 합계: 30% 이하
+        - 주간 회전율: 매주 5% 이상 (cmpl.currWto)
+        ok 는 서버가 센 현재 위반이 0건이고 이번 주 회전율이 5% 이상일 때만 True."""
+        pos = self.positions()
+        stock = sorted(((p, float(r.get("wei") or 0), float(r.get("weiLimit") or 15)) for p, r in pos.items()),
+                       key=lambda x: x[2] - x[1])
+        pf_sec: dict[str, float] = {}
+        for r in pos.values():
+            pf_sec[str(r.get("sec"))] = pf_sec.get(str(r.get("sec")), 0.0) + float(r.get("wei") or 0)
+        mkt_sec = {str(v.get("sec")): float(v.get("wei") or 0) for v in self.state.msecs.values()
+                   if isinstance(v, dict)}               # msecs 레코드: {"Id": 1, "sec": "10", "wei": 0.92}
+        sector = {s: (w, max(2 * mkt_sec.get(s, 0.0), 10.0)) for s, w in sorted(pf_sec.items(), key=lambda x: -x[1])}
+        tags = self.state.extra.get("tags") or {}
+        small = sum(float(pos[p].get("wei") or 0) for p, tg in tags.items() if p in pos and "SmallCap" in (tg or []))
+        cmpl = self.state.extra.get("cmpl") or {}
+        return {
+            "stock": [{"prodId": p, "wei": w, "limit": lim, "headroom": round(lim - w, 2)} for p, w, lim in stock[:5]],
+            "sector": {s: {"wei": round(w, 2), "limit": round(lim, 2), "headroom": round(lim - w, 2)} for s, (w, lim) in sector.items()},
+            "small_cap": {"wei": round(small, 2), "limit": 30.0},
+            "turnover": {"this_week": cmpl.get("currWto"), "avg": cmpl.get("avgWto"), "min": 5.0,
+                         "violations": cmpl.get("wtoViols"), "expected_violations": cmpl.get("expWtoViols")},
+            "server": (srv := await self.rest.violations()),
+            "ok": not (srv.get("Current") or {}).get("TotalViolCnt") and (cmpl.get("currWto") or 0) >= 5.0,
+        }
 
     async def rebalance(self, targets: dict[str, float], min_wei: float = 0.05, **price) -> list[int]:
         """plan() 의 주문을 1 s 간격으로 보내고 주문 ID 목록을 돌려준다. 한도가 모자라면 시작하지 않는다."""

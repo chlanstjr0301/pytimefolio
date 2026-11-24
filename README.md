@@ -39,7 +39,9 @@ asyncio.run(main())
 - Price: exactly one of `limit_prc` (limit price), `limit_idx` (n ticks on the opposite side,
   `-n` for own side), `stop_prc`. Timing: `hm0` only = immediate; `hm0` and `hm1` = spread over
   the window.
-- Sells (`ex = X`) are not yet verified against the server and need `allow_untested=True`.
+- A sell is sent as `ls = L`, `ex = X`; the server records it with `sgn = -1`. The share count
+  (`qty2ord`) is rounded down, so an order smaller than one share's weight may come out as 0 shares.
+- `ModifyOrder` and `DeleteOrder` are not wrapped yet: they have not been tested against the server.
 
 ## Credentials
 

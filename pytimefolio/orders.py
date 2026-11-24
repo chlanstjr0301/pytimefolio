@@ -6,7 +6,9 @@
 - 응답을 못 받은 주문은 바로 다시 보내지 않는다 -> 30 s 기다렸다 피드에서 찾고, 없을 때만 한 번 더.
 - 주문의 wei 는 목표 비중이 아니라 주문 크기(%) -> target_to_orders 가 (목표 - 현재)로 바꾼다.
 - 끝난 주문은 모두 state=Done. cnclT 가 있으면 정지, 0 < cumQty < qty2ord 이면 일부 체결.
-- ModifyOrder/DeleteOrder 는 실측 전이라 넣지 않는다. 매도(ex=X)도 실측 전이라 allow_untested 가 필요.
+- ModifyOrder/DeleteOrder 는 실측 전이라 넣지 않는다.
+- 매도는 ls=L, ex=X 로 보내고 서버 기록은 sgn=-1 (2026-11-24 09:43 실측).
+- qty2ord 는 (wei% x NAV / 가격)의 내림: 삼성 0.1% -> 4주, LIG 0.1% -> 2주. 1주 비중보다 작은 주문은 0주가 될 수 있다.
 """
 from __future__ import annotations
 
@@ -46,7 +48,7 @@ def round_to_tick(price: float, down: bool = True) -> int:
 class Order:
     prod_id: str
     wei: float                         # 주문 크기 (% of NAV), 양수
-    exit: bool = False                 # False = 진입/매수(ex=E), True = 청산/매도(ex=X, 실측 전)
+    exit: bool = False                 # False = 진입/매수(ex=E), True = 청산/매도(ex=X)
     limit_prc: int | None = None       # 지정가
     limit_idx: int | None = None       # 상대호가 n (1~10), 자기호가는 -n
     stop_prc: int | None = None
@@ -157,8 +159,6 @@ class Orders:
     async def check(self, o: Order) -> None:
         if not self.r.biz_day_is_today():
             raise AmbiguousState(f"서버 영업일 {self.r.biz_day} != 오늘 {self.r.kst_today()}: 주문하지 않음")
-        if o.exit and not self.allow_untested:
-            raise TimefolioError("매도(ex=X)는 아직 실측 전. allow_untested=True 로만 허용")
         warns = await self.r.validate_product(o.prod_id, entry=not o.exit)
         if warns:
             raise RequestError(f"{o.prod_id} ValidateProduct 경고: {warns}")
