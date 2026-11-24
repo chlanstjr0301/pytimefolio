@@ -56,7 +56,8 @@ class Timefolio:
         await asyncio.wait_for(self._first.wait(), 30)
         self.sec_of = {u["Id"]: str(u["sec"]) for u in await self.rest.universe()}
         n = await self._sync_count()
-        log.info("준비 완료: pfId=%s, 영업일 %s, 오늘 주문 %d/%d건", pf, self.rest.biz_day, n, self._daily_cap)
+        log.debug("pfId=%s", pf)
+        log.info("준비 완료: 영업일 %s, 오늘 주문 %d/%d건", self.rest.biz_day, n, self._daily_cap)
         return self
 
     async def __aexit__(self, *exc) -> None:

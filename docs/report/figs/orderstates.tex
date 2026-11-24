@@ -1,5 +1,5 @@
 % OWNER: figs/orderstates.tex. Edit only this file.
-\fig[wide]{orderstates}{An unconfirmed order is never resent; the server's order ends in \code{Done} whether filled or stopped}[Top: what one \code{AddOrder} call does after each kind of reply. Bottom: the order's \code{state} on the server (names from the web client's code)]{%
+\fig[wide]{orderstates}{An order the server may have received is never resent; the server's order ends in \code{Done} whether filled or stopped}[Top: what one \code{AddOrder} call does after each kind of reply. Bottom: the order's \code{state} on the server (names from the web client's code)]{%
 \begin{tikzpicture}[x=1mm,y=1mm,
   f/.style={font=\fontsize{7}{8.4}\selectfont},
   st/.style={rectangle,rounded corners=1.6mm,draw=navy,line width=0.6pt,f,text=navy,align=center,minimum width=24mm,minimum height=8.5mm,inner sep=1pt,fill=white},
@@ -23,10 +23,10 @@
 \draw[tr] ([yshift=2mm]S.west) to[out=160,in=110,looseness=6] ([xshift=-7mm]S.north);
 \node[lb,anchor=east,align=right] at (13,9) {401: renew the token,\\send once more};
 \draw[tr] ([yshift=-2mm]S.west) to[out=-160,in=-110,looseness=6] ([xshift=-7mm]S.south);
-\node[lb,anchor=east,align=right] at (13,-9) {connection failed before\\the request left:\\send once more};
+\node[lb,anchor=east,align=right] at (13,-9) {connection never\\established: send once\\more; if that fails too,\\look for the order};
 % S -> T4, S -> F
 \draw[tr] (S.north) -- node[lb,right]{400: never retried} (T4.south);
-\draw[tr] (S.east) -- node[lb,above]{200, no\\order ID} node[lb,below,align=center]{reply lost: timeout,\\5xx or connection\\lost after sending} (F.west);
+\draw[tr] (S.east) -- node[lb,above]{200 with no\\order ID} node[lb,below,align=center]{or reply lost:\\timeout, 5xx or\\connection lost\\after sending} (F.west);
 % F -> Q, F -> TI, Q -> TA, Q -> TI
 \draw[tr] (F.east) -- node[lb,above]{not found} node[lb,below]{in 15\,s} (Q.west);
 \draw[tr] (Q.north) -- node[lb,right,align=left]{not among records\\newer than the write} (TA.south);
@@ -50,7 +50,7 @@
 \draw[tr] (W.north east) to[out=25,in=155] node[lb,above]{last share filled} (D.north west);
 \draw[tr] (W.east) -- node[lb,below,align=center]{stopped} (D.west);
 \draw[tr] (A.south) to[out=-35,in=-145] node[lb,below,align=center]{stopped at once (order 1650719)} (D.south);
-\node[lb,anchor=west,align=left] at (125,-44) {filled if \code{cnclT} null;\\stopped if \code{cnclT} set;\\partly filled if also\\0 $<$ \code{cumQty} $<$ \code{qty2ord}};
+\node[lb,anchor=west,align=left] at (125,-44) {filled if \code{cnclT} null;\\stopped if \code{cnclT} set;\\partly filled, then\\stopped if also \code{cumQty} $>$ 0};
 % ------------------------------------------------ legend
 \begin{scope}[shift={(-22,-78)}]
 \node[st,minimum width=8mm,minimum height=4.5mm] at (4,0) {}; \node[f,anchor=west] at (9,0) {wrapper step};
@@ -60,4 +60,4 @@
 \draw[tr] (145,1.6) -- (152,1.6); \node[f,anchor=west] at (153,1.6) {rule or observed};
 \draw[trU] (145,-1.8) -- (152,-1.8); \node[f,anchor=west] at (153,-1.8) {not observed};
 \end{scope}
-\end{tikzpicture}}{The wrapper never sends an order a second time when it cannot tell whether the first reached the server. It retries once only in 2 cases that cannot create a duplicate: a connection that failed before the request left (\code{ConnectError}, \code{ConnectTimeout}, \code{PoolTimeout}), and a 401, which ASP.NET returns before the request reaches its handler (D36). A 403 or 429 raises \code{BlockedError} and halts all writes (not drawn). One lock covers sending and finding, so 2 identical orders cannot be matched to the same order ID. Server states: \code{Accepted} was seen right after placing order 1650719, \code{Working} on the 08:30 order; \code{Generated} and \code{Deleted} appear only in the client code. Every finished order shows \code{Done}, so \code{cnclT} and \code{cumQty} tell a fill from a stop.}{\code{pytimefolio} \code{orders} and \code{transport} modules; live feed and \code{Orders} replies, 24 Nov 2026; DART Quant Team}
+\end{tikzpicture}}{The wrapper never sends an order a second time when it cannot tell whether the first reached the server. It sends once more only in 2 cases that cannot create a duplicate: a connection that was never established (\code{ConnectError}, \code{ConnectTimeout}, \code{PoolTimeout}), and a 401, which ASP.NET returns before the request reaches its handler (D36). If the resend after a connection failure also fails, the order goes to the feed and REST search; there is no third send. A 403 or 429 on any request raises \code{BlockedError} and halts all writes (not drawn). One lock covers sending and finding, and IDs already returned are skipped, so 2 identical orders cannot be matched to the same order ID. Server states: \code{Accepted} was seen right after placing order 1650719, \code{Working} on the 08:30 order; \code{Generated} and \code{Deleted} appear only in the client code. Every finished order shows \code{Done}, so \code{cnclT} and \code{cumQty} tell a fill from a stop.}{\code{pytimefolio} \code{orders} and \code{transport} modules; live feed and \code{Orders} replies, 24 Nov 2026; DART Quant Team}

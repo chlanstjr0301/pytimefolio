@@ -1,12 +1,12 @@
 % OWNER: figs/goals.tex. Edit only this file.
-\fig[wide]{goals}{5 goals and 5 non-goals bound the wrapper}[Scope of \code{pytimefolio}: each goal with the measure that shows it is met]{%
+\fig[wide]{goals}{Five goals and five non-goals bound the wrapper}[Scope of \code{pytimefolio}: each goal with the measure that shows it is met]{%
 {\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{7mm} >{\RaggedRight\arraybackslash}p{70mm} >{\RaggedRight\arraybackslash}X}
 \thd{ID} & \thd{Goal} & \thd{Measure of success}\\
-\hl G1 & Stay logged in for the whole contest without a person & No manual login between the start and 30 Nov; every renewal and login logged\\\rowsep
-G2 & Give the strategy the portfolio's current state & State no older than one poll (3\,s) and equal to a fresh snapshot after every delta; reads, orders and \code{wait_done()} refuse a state older than 26\,s (\code{StaleFeed})\\\rowsep
-G3 & Place, stop and track orders within the organiser's limits and the contest's guidelines & At most 80 orders a day (new orders plus stopped orders); at least 1\,s between writes; an order whose reply is lost is never resent; \code{plan()} refuses targets that break the total, universe, stock or sector rule\\\rowsep
+\hl G1 & Stay logged in for the whole competition without a person & No manual login between the start and 30 Nov; every renewal and login logged\\\rowsep
+G2 & Give the strategy the portfolio's current state & (a) Merge: the merged state equals a snapshot with the same \code{t} after every delta. (b) Freshness: no read, order or \code{wait()} uses a state older than 26\,s, 2 polls plus the 20\,s reply deadline (\code{StaleFeed} instead); the 3\,s poll is a target, not a guarantee\\\rowsep
+G3 & Place, stop and track orders within the organiser's limits and the competition's guidelines & At most 80 orders a day (new orders plus stopped orders); at least 1\,s between writes; an order the server may have received is never resent; each placed order is confirmed within 15\,s in the feed or in REST \code{Orders}; \code{plan()} refuses target weights that break the total, universe, stock or sector rule at planning time (weights during execution are not held within limits)\\\rowsep
 G4 & Polling never delays an order & Feed polling and orders share one event loop, and no order waits for a feed reply (Section~\ref{sec:live})\\\rowsep
-G5 & Stop on ambiguity instead of guessing & Raises \code{AmbiguousState} when the portfolio rule matches 0 entries or more than 1, when \code{currBizDay} differs from the KST date, or when a placed order is found neither in the feed within 15\,s nor in REST \code{Orders} (the order is not resent); raises \code{RequestError} on a 400\\
+G5 & Stop on ambiguity instead of guessing & Raises \code{AmbiguousState} when the portfolio rule matches no entry or more than one, when more than one new record matches a placed order, when \code{currBizDay} differs from the KST date, or when a placed order is found neither in the feed within 15\,s nor in REST \code{Orders} (the order is not resent); raises \code{RequestError} on a 400\\
 \specialrule{0.8pt}{1pt}{1pt}
 \thd{ID} & \thd{Non-goal} & \thd{Reason}\\
 N1 & Market data (prices, order books) & The caller supplies prices; folding in another API adds another login and another set of limits\\\rowsep

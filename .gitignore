@@ -14,6 +14,12 @@ data/responses/v.json
 data/responses/neg.json
 logs/*.log
 preopen_cron.log
+# research outputs written to the current directory (account data, tokens)
+/rp_*.json
+/preopen_*.json
+/r[0-9]*.json
+/session*.json
+*.out
 .env
 .venv/
 data/

@@ -7,7 +7,7 @@ WebSocket 연결 중에 액세스 토큰이 만료되면 어떻게 되는가?
   (C) 연결은 유지되지만 RequestPortfolio에 에러/빈 응답이 온다
 
 사용법 (가상환경 활성화, 방금 SilentRefresh로 받은 세션 파일 지정):
-    nohup python ws_expiry_probe.py --session r7.json > ws_expiry.out 2>&1 &
+    nohup python ws_expiry_probe.py --session data/responses/r7.json > ws_expiry.out 2>&1 &
     tail -f ws_expiry.out          # 진행 상황 보기 (Ctrl+C는 tail만 끈다)
 
 기본 28분 동안 3초 간격으로 요청한다. 토큰 exp + 8분이 지나면 스스로 끝난다.
@@ -116,7 +116,7 @@ async def main(session: str, pf_id: int, minutes: float):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--session", default="r7.json")
+    ap.add_argument("--session", default="data/responses/r7.json")
     ap.add_argument("--pf", type=int, required=True, help="your portfolio ID (pfId)")
     ap.add_argument("--minutes", type=float, default=28)
     a = ap.parse_args()

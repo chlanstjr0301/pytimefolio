@@ -5,16 +5,16 @@
 
 \vspace{4pt}
 {\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{28mm} >{\RaggedRight\arraybackslash}p{48mm} >{\RaggedRight\arraybackslash}X}
-\thd{Author} & \thd{Major} & \thd{Additional majors}\\
-Choi Munseok & Food and Resource Economics & Computer Science (double major); Mathematics (triple major)\\\rowsep
-Choi Yeayun & Computer Science & Business Intelligence (double major)\\
+\thd{Author} & \thd{Major} & \thd{Second major and minor}\\
+Choi Munseok & Food and Resource Economics & Computer Science (second major); Mathematics (minor)\\\rowsep
+Choi Yeayun & Computer Science & Business Intelligence (second major)\\
 \end{tabularx}}
 \vspace{6pt}
 
 \lead{Author statement.} The measurements, code and conclusions in this report are the authors' own. The authors take part in Road to Fund Manager round 13 with their own participant accounts, and every request in this report was sent from one of those accounts. No other participant's account data was requested.
 
-\lead{Nature of the report.} DART is the Financial Data Science Club at Kyungpook National University. This report is an academic study of a web service's undocumented behaviour as observed on 24 Nov 2026; it is not investment advice and recommends no security. The authors are not affiliated with Timefolio Asset Management, which publishes no API and has not reviewed or endorsed this report or the package. The organiser stated by e-mail on 24 Nov 2026 that automated orders are not prohibited and that an IP address placing 100 or more orders a day, or sending bursts of traffic, may be blocked [5].
+\lead{Nature of the report.} DART is the Financial Data Science Club at Kyungpook National University. This report is an academic study of a web service's undocumented behaviour as observed on 24 Nov 2026; it is not investment advice and recommends no security. The authors are not affiliated with Timefolio Asset Management, which publishes no API and has not reviewed or endorsed this report or the package. The organiser stated by e-mail on 24 Nov 2026 that automated orders are not prohibited, that an IP address that places 100 or more orders in a day may be blocked, and that bursts of traffic may lead to a block as well [5].
 
-\lead{Use of the package.} \code{pytimefolio} is released under the MIT licence without warranty [8]. Anyone who uses it remains bound by the contest's rules and the organiser's limits; the wrapper's own cap of 80 orders a day and 1\,s between writes sit inside those limits and should not be raised.
+\lead{Use of the package.} \code{pytimefolio} is released under the MIT licence without warranty [8]. Anyone who uses it remains bound by the competition's rules and the organiser's limits. The wrapper's own limits, at most 80 orders a day and at least 1\,s between writes, should not be loosened: the cap of 80 is below the organiser's threshold of 100, and the 1\,s gap follows the organiser's advice to delay between requests, for which no value was stated.
 
-\lead{Data sources.} All data come from the authors' requests to \code{contest.timefolio.net}; \figref{setup} gives the test set-up, and the scripts that produced each measurement are in the repository's \code{research/} folder.
+\lead{Data sources.} All data come from the authors' requests to \code{contest.timefolio.net}; \figref{setup} gives the test set-up, most measurement scripts are in the repository's \code{research/} folder and the wrapper checks in \code{tests/live/}. The curl timing runs of Section~\ref{sec:transport} used curl's \code{-w} timers, and the 3\,s poll comes from a browser recording of 28 Oct 2026.

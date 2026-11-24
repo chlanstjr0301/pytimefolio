@@ -276,6 +276,24 @@ class OrdersGateTest(unittest.TestCase):
         self.assertEqual(first, 11)
         self.assertEqual(second, 12)
 
+    def test_two_identical_new_orders_are_ambiguous(self):
+        """주문을 넣은 뒤 같은 내용의 새 기록이 피드에 두 건 나타나면 하나를 고르지 않고 AmbiguousState."""
+        n = {"add": 0}
+        rec = {"prodId": "A005930", "ls": "L", "ex": "E", "wei": 0.1, "state": "Working"}
+        def h(req):
+            n["add"] += 1
+            hub.state.ords[21] = {**rec, "Id": 21}       # 다른 곳에서 넣은 같은 내용의 주문과 이 주문
+            hub.state.ords[22] = {**rec, "Id": 22}
+            return httpx.Response(200, json={"data": ""})
+        od, hub = self.make(h)
+        got = []
+        with self.assertRaises(AmbiguousState) as cm:
+            got.append(run(od.place(Order("A005930", 0.1, limit_prc=150000))))
+        self.assertEqual(got, [])                        # 아무 ID 도 돌려주지 않았다
+        self.assertEqual(n["add"], 1)                    # 다시 보내지 않았다
+        self.assertIn("21", str(cm.exception)); self.assertIn("22", str(cm.exception))
+        self.assertEqual(od._claimed, set())
+
     def test_block_on_read_halts_writes(self):
         """읽기에서 받은 403 도 이후 쓰기를 막는다."""
         od, _ = self.make(lambda r: httpx.Response(403))

@@ -1,16 +1,17 @@
 # pytimefolio
 
-Unofficial asyncio API wrapper for Timefolio's **Road to Fund Manager** paper-trading contest
+Unofficial asyncio API wrapper for Timefolio's **Road to Fund Manager** paper-trading competition
 (`contest.timefolio.net`). It reproduces the requests the contest's own web client makes; every
 behaviour it relies on was measured and is documented in [`report/main.pdf`](report/main.pdf).
 
 > **Unofficial.** Timefolio publishes no API and does not support this package. The organiser has
-> told us that automated orders are not prohibited; check the current contest rules yourself before
+> told us that automated orders are not prohibited; check the current competition rules yourself before
 > using it.
 
-The organiser has stated that automated orders are not prohibited, but an account placing 100 or
-more orders a day, or sending bursts of traffic, may have its IP address blocked. The wrapper caps
-itself at 80 orders a day and spaces write requests 1 s apart. Do not lower these limits.
+The organiser has stated that automated orders are not prohibited, but an IP address that places
+100 or more orders a day, or sends bursts of traffic, may be blocked. The wrapper caps itself at
+80 orders a day and spaces write requests 1 s apart. Do not raise the daily cap or shorten the
+1 s spacing. Several users behind one IP address (a campus or office network) share that limit.
 
 ## Install
 
@@ -70,5 +71,5 @@ server, so treat this file like a password and keep it out of the repository.
 python -m unittest discover -v tests     # offline, no server needed; this is what CI runs
 ```
 
-`tests/live/` holds scripts that use your account against the real server; two of them place
+`tests/live/` holds scripts that use your account against the real server; three of them place
 (and immediately stop) real orders. See `tests/live/README.md`.

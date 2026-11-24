@@ -1,11 +1,11 @@
 % OWNER: figs/pfs.tex. Edit only this file.
 \fig{pfs}{The live portfolio is neither reset nor past its end date}[The 6 entries in \code{pfs} from the login reply, newest first; portfolio IDs omitted]{%
-{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}p{25mm} >{\RaggedRight\arraybackslash}p{13mm} >{\RaggedRight\arraybackslash}X}
-\thd{Contest (\code{ctstId})} & \thd{Period} & \thd{\code{invalid}} & \thd{Status on the web page}\\
+{\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{34mm} >{\RaggedRight\arraybackslash}p{25mm} >{\RaggedRight\arraybackslash}p{13mm} >{\RaggedRight\arraybackslash}X}
+\thd{Competition (\code{ctstId})} & \thd{Period} & \thd{\code{invalid}} & \thd{Status on the web page}\\
 \hl\textbf{Round 13 (91)} & \textbf{12 Oct to 30 Nov} & \textbf{absent} & \textbf{live}\\\rowsep
 Round 13 (91) & 1 Oct to 8 Oct & True & ended, reset\\\rowsep
 Round 12 (90) & 3 Jul to 31 Aug & absent & ended\\\rowsep
 Round 12 (90) & 1 Jul to 2 Jul & True & ended, reset\\\rowsep
 Round 11 (86) & 1 Apr to 29 May & absent & ended\\\rowsep
 Practice (1) & 5 Feb to 30 Apr & True & ended, reset\\
-\end{tabularx}}}{Shaded row: the live portfolio, the only entry without \code{invalid} whose period includes 24 Nov. \code{invalid} appears only on reset portfolios. \code{active} is False for all 6 entries, including the live one, so the wrapper selects by contest (\code{ctstId}), absent \code{invalid} and an end date (\code{lastD}) not yet passed, and requires exactly 1 match.}{DART Quant Team}
+\end{tabularx}}}{Shaded row: the live portfolio, the only entry without \code{invalid} whose period includes 24 Nov. \code{invalid} appears only on reset portfolios. \code{active} is False for all 6 entries, including the live one, so the wrapper selects by competition (\code{ctstId}), absent \code{invalid} and an end date (\code{lastD}) not yet passed, and requires exactly 1 match.}{DART Quant Team}

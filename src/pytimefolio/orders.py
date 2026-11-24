@@ -251,27 +251,37 @@ class Orders:
                 raise RequestError(f"{o.prod_id} 종목 한도 {lim}% 초과")
 
     # ---- 피드에서 새 주문 찾기
+    @staticmethod
+    def _one(o: Order, cands: list[tuple[int, dict]]) -> dict | None:
+        """새로 나타난 같은 내용의 주문이 둘 이상이면 어느 것이 이 주문인지 알 수 없으므로 고르지 않고 멈춘다."""
+        if len(cands) > 1:
+            ids = ", ".join(str(i) for i, _ in cands)
+            raise AmbiguousState(f"{o.prod_id} {o.wei}% 와 같은 내용의 새 주문이 여러 건 있음 (Id: {ids}). "
+                                 "래퍼는 어느 것이 방금 넣은 주문인지 구별할 수 없음. "
+                                 "다시 보내지 않았으니 화면에서 확인할 것")
+        return cands[0][1] if cands else None
+
     def _match(self, o: Order, before: set) -> dict | None:
-        for oid, rec in self.hub.state.ords.items():
-            if oid in before:
-                continue
-            if _same_order(rec, o):
-                return rec
-        return None
+        cands = [(oid, rec) for oid, rec in self.hub.state.ords.items()
+                 if oid not in before and _same_order(rec, o)]
+        return self._one(o, cands)
 
     async def _find_rest(self, o: Order, before: set, since_utc: dt.datetime) -> dict | None:
         """REST Orders(서버 기록)에서 찾는다. 피드가 끊겼을 때도 쓸 수 있는 확인 수단."""
+        cands = []
         for rec in await self.r.orders():
             if rec.get("Id") in before or not _same_order(rec, o):
                 continue
             g = _parse_utc(rec.get("genT"))
             if g is None or g >= since_utc - dt.timedelta(seconds=5):
-                return rec
-        return None
+                cands.append((rec.get("Id"), rec))
+        return self._one(o, cands)
 
     async def _find(self, o: Order, before: set, timeout: float) -> dict | None:
         end = time.monotonic() + timeout
         while time.monotonic() < end:
+            # 처음 일치한 순간 피드에 보이는 후보만으로 판단한다. 같은 내용의 두 번째 기록이
+            # 그 직후(다음 3 s 갱신)에야 나타나면 여기서는 알아채지 못하고 첫 기록을 돌려준다.
             rec = self._match(o, before)
             if rec:
                 return rec

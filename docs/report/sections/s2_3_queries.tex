@@ -8,27 +8,27 @@
 
 \lead{A Bearer header is enough; queries need no cookies.} A \code{GET} to \code{Portfolio/Violations} for the live portfolio returned HTTP 200 with the access token in the header and 401 without it.
 
-\lead{The live portfolio has to be chosen by contest ID, reset flag and end date, because 2 portfolios can share a contest name.} The \code{pfs} list gains an entry for each contest entered and each reset (\figref{pfs}). Round 13 has 2 entries with the same contest name, and picking by name can return the 1--8 Oct entry, which ended with a reset.
+\lead{The live portfolio has to be chosen by competition ID, reset flag and end date, because 2 portfolios can share a competition name.} The \code{pfs} list gains an entry for each competition entered and each reset (\figref{pfs}). Round 13 has 2 entries with the same competition name, and picking by name can return the 1 to 8 Oct entry, which ended with a reset.
 
 \input{figs/pfs.tex}
 
-\lead{Two field names mislead.} \code{active} is False for all 6 entries, including the live one, so it says nothing about which portfolio is running. The reset flag is the presence of \code{invalid}, so a missing key has to be read as False. If the rule below matches anything other than exactly one portfolio, the wrapper stops instead of guessing.
+\lead{Two field names are misleading.} \code{active} is False for all 6 entries, including the live one, so it says nothing about which portfolio is running. The reset flag is the presence of \code{invalid}, so a missing key has to be read as False. If the rule below matches anything other than exactly one portfolio, the wrapper stops instead of guessing.
 
 \par\noindent\begin{minipage}{\linewidth}\fontsize{8.5}{11}\selectfont\ttfamily
 \hspace*{4mm}select\_pf(ctstId):\\
 \hspace*{8mm}cands $\leftarrow$ \{ pf $\in$ pfs : pf.ctstId = ctstId $\wedge$ $\neg$pf.invalid\\
 \hspace*{38mm}$\wedge$ pf.lastD $\geq$ currBizDay \}\\
-\hspace*{8mm}return the single element of cands, else raise\end{minipage}\par
+\hspace*{8mm}return the single element of cands, else raise\end{minipage}\par\vspace{4pt}
 
-\lead{The date parameter accepts any date, and the server decides which day's data to return (\figref{dates}).} A weekend date returns the previous trading day, a future date the latest one, and a holiday after the contest returns zeros, all with HTTP 200. A caller that collects history day by day therefore has to check each date against a trading calendar, or the same day's data is stored under several dates; the wrapper itself has no such loop.
+\lead{The date parameter accepts any date, and the server decides which day's data to return (\figref{dates}).} A weekend date returns the previous trading day, a future date the latest one, and a holiday after the competition returns zeros, all with HTTP 200. A caller that collects history day by day therefore has to check each date against a trading calendar, or the same day's data is stored under several dates; the wrapper itself has no such loop.
 
 \input{figs/dates.tex}
 
-\lead{The Sunday reply carries 20 Nov data: it differs from the 23 Nov reply only in the weight of the portfolio's one small-cap stock.} That stock's price did not change on 23 Nov (previous close and close both KRW~14,840), while the portfolio's value fell 3.59\% that day. A stock whose price stays flat gains weight as the portfolio shrinks, so its 20 Nov weight should be $3.33 \times (1 - 0.0359) = 3.21$\%, the value the Sunday request returned.
+\lead{The Sunday reply carries 20 Nov data: it differs from the 23 Nov reply only in the weight of the portfolio's one small-cap stock.} That stock's price did not change on 23 Nov (previous close and close both KRW~14,840), while the portfolio's value fell 3.59\% that day. A stock whose price stays flat gains weight as the portfolio shrinks, so its 20 Nov weight should be 3.33\,×\,(1\,−\,0.0359) = 3.21\%, the value the Sunday request returned.
 
 \lead{The server's business day also differs from the calendar for several hours after midnight.} \code{currBizDay} still read 23 Nov at 06:02:10 on 24 Nov and read 24 Nov at 07:06:44, so the server moves to the next business day between those two times, before the 09:00 open. A request made before the rollover carries the previous day's date.
 
 \lead{Three more read endpoints give the order window, the investable universe and the order history (\figref{readeps}).} \code{Session} returns 09:00 to 15:20, the window in which orders execute; 15:20 is when the closing auction begins. \code{Universe} lists 2,648 investable stocks with their GICS sector. Some tickers mix letters and digits (\code{A0015M0}), following the Korea Exchange's newer code format, so tickers are handled as strings. \code{Orders} takes a date range, \code{d0} and \code{d1}. Our first request sent \code{d} and got an empty list for 23 Nov, although the live feed showed a filled order on that day; the web page's own request during the session sent \code{d0} and \code{d1} and received every order of the range, finished ones included (Section~\ref{sec:orders}).
 
 \input{figs/readeps.tex}
-\verdict{the wrapper fills every request date from the server's \code{currBizDay} and refuses to place orders while \code{currBizDay} differs from the KST calendar date (D6, D27). It chooses the portfolio with the rule above and stops when the rule matches 0 or 2 portfolios (D7).}
+\verdict{the wrapper fills every request date from the server's \code{currBizDay} and refuses to place orders while \code{currBizDay} differs from the KST calendar date (D6, D27). It chooses the portfolio with the rule above and stops when the rule matches no portfolio or more than one (D7).}

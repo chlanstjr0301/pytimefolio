@@ -2,7 +2,7 @@
 \par\Needspace{40mm}\seclabel
 \claim{Appendix \secnum{A}{app:glossary}\quad Glossary}
 {\tabfont\setlength{\LTleft}{0pt}\LTright=\dimexpr-\extrawide\relax plus 1fill\relax\setlength{\LTpre}{2pt}\setlength{\LTpost}{0pt}%
-\begin{longtable}{>{\RaggedRight\arraybackslash}p{32mm} >{\RaggedRight\arraybackslash}p{144mm}}
+\begin{longtable}{>{\RaggedRight\arraybackslash}p{36mm} >{\RaggedRight\arraybackslash}p{140mm}}
 \thd{Term} & \thd{Meaning in this report}\\
 \endfirsthead
 \thd{Term} & \thd{Meaning in this report (continued)}\\
@@ -16,7 +16,7 @@ Bearer token & An access token sent as \code{Authorization: Bearer <token>}; who
 Clock skew & The tolerance a server allows when comparing a token's times with its own clock; 300\,s here\\\rowsep
 \code{cmpl} & Feed record with this week's turnover (\code{currWto}) and the count of weekly turnover violations (\code{wtoViols})\\\rowsep
 \code{cnclT} & Time an order was stopped; null otherwise. A stopped order still ends in \code{Done}, so \code{cnclT} tells a stopped order from a filled one\\\rowsep
-Cookie jar & All cookies the server sets at login, \code{refreshToken} among them. They expire 7 days after login; renewal does not extend them and \code{Logout} does not revoke them. The wrapper stores them in \code{~/.config/pytimefolio/session.json}, mode 0600\\\rowsep
+Cookie jar & All cookies the server sets at login, \code{refreshToken} among them. They expire 7 days after login; renewal does not extend them, and a stored copy keeps renewing after \code{Logout}. The wrapper stores them in \code{~/.config/pytimefolio/session.json}, mode 0600\\\rowsep
 \code{cumQty} & Shares of an order filled so far\\\rowsep
 \code{currBizDay} & The server's current business day, returned at login and renewal; it rolls over between 06:02 and 07:07\\\rowsep
 Delta & A live-feed reply holding only what changed since the reply whose \code{t} the client echoed (\code{*_diff} fields and \code{bs_updated}); a delta may be empty\\\rowsep
@@ -29,8 +29,10 @@ Keep-alive & Keeping a TCP connection open between requests so later requests sk
 Login session & The server-side session one login creates, held by its cookie jar; it lasts 7 days, and each login adds one\\\rowsep
 \code{msecs} & Market weight of each GICS sector in the feed, the base of the sector limit\\\rowsep
 \code{na} & Net assets of the portfolio in KRW, in the feed's \code{bs}; the denominator of one share's weight\\\rowsep
+\code{nav} & A \code{bs} field the wrapper does not use; it is not the net assets. The method \code{nav()} returns \code{na}\\\rowsep
 Negotiate & SignalR's first HTTP request, which returns a connection token and the transports on offer\\\rowsep
-\code{pfId} & Portfolio ID; one account has one per contest entry and reset\\\rowsep
+Null reply & A live-feed reply whose arguments are \code{null} (seen once, right after an order); the wrapper answers it by asking for a snapshot. Unlike an empty delta, it has no delta fields\\\rowsep
+\code{pfId} & Portfolio ID; one account has one per competition entry and reset\\\rowsep
 Position record & One entry of \code{pos} in a snapshot, with 28 keys: \code{Id}, \code{avgPrc}, \code{bPrc}, \code{bQty}, \code{chPct}, \code{close}, \code{ctstNm}, \code{d}, \code{div}, \code{fee}, \code{pfId}, \code{pos}, \code{posYd}, \code{prcYd}, \code{prft}, \code{prftKrw}, \code{prodId}, \code{prodNm}, \code{rstr}, \code{sPrc}, \code{sQty}, \code{sec}, \code{tax}, \code{userNick}, \code{userNm}, \code{wei}, \code{weiLimit}, \code{yWei}\\\rowsep
 pp & Percentage point: the difference between two percentages (12\% to 15\% is 3 pp)\\\rowsep
 \code{qty2ord} & Number of shares an order asks for, computed by the server from its \code{wei} and rounded down to whole shares\\\rowsep
@@ -39,9 +41,9 @@ RTT & Round-trip time: one message to the server and back\\\rowsep
 SignalR & Microsoft's library for live messaging between ASP.NET servers and clients, here over WebSocket\\\rowsep
 Small cap & A stock with a market capitalisation under KRW 1 trillion, labelled \code{SmallCap} in the feed's \code{tags}\\\rowsep
 Snapshot & A live-feed reply holding the full state (\code{bs}, \code{ords}, \code{pos}, \code{msecs} and 5 smaller top-level fields); sent when the client's echo of \code{t} is missing or does not match\\\rowsep
-Stop & Cancelling a working order through \code{CancelOrderBatch}; a stopped order ends in \code{Done} with \code{cnclT} set, and each stopped order ID counts towards the daily limit\\\rowsep
+Stop & Cancelling a working order through \code{CancelOrderBatch} (unrelated to a stop price, \code{stopPrc}); a stopped order ends in \code{Done} with \code{cnclT} set, and each stopped order ID counts towards the daily limit\\\rowsep
 Trading session & 09:00 to 15:20 KST, the hours in which orders fill\\\rowsep
-Turnover & Weekly trading as a percentage of the portfolio; the contest requires at least 5\% every week\\\rowsep
-\code{wei} & Weight in percent (9 means 9\%); on a position the current weight, on an order the size of the order, which the wrapper quantises to 0.01\%\\\rowsep
+Turnover & Weekly trading as a percentage of the portfolio; the competition requires at least 5\% every week\\\rowsep
+\code{wei} & Weight as a percentage of net assets (\code{na}; 9 means 9\%); on a position the current weight, on an order the size of the order, which the wrapper quantises to 0.01\%\\\rowsep
 \code{weiLimit} & Upper limit of a stock's weight in percent: 40 for Samsung Electronics, 15 for the others\\
 \end{longtable}}

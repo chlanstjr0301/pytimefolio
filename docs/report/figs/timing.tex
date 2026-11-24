@@ -25,10 +25,10 @@
 \draw[rep] (\Rx,{\tT{46.3}}) -- node[ml]{A reply} (\Cx,{\tT{49.3}});
 % TCP: one RTT
 \draw[msg] (\Cx,{\tT{49.3}}) -- node[ml]{SYN} (\Sx,{\tT{54.85}});
-\draw[rep] (\Sx,{\tT{54.85}}) -- node[ml,pos=0.7]{SYN-ACK} (\Cx,{\tT{60.4}});
+\draw[rep] (\Sx,{\tT{54.85}}) -- node[ml,pos=0.78,fill=white,inner sep=0.6pt]{SYN-ACK} (\Cx,{\tT{60.4}});
 % TLS 1.3: one RTT, then the rest of curl's TLS time on the client
 \draw[msg] (\Cx,{\tT{60.4}}) -- node[ml,pos=0.66]{ACK, ClientHello} (\Sx,{\tT{65.95}});
-\draw[rep] (\Sx,{\tT{65.95}}) -- node[ml,below,inner sep=0.4pt,pos=0.45]{ServerHello ... Finished} (\Cx,{\tT{71.5}});
+\draw[rep] (\Sx,{\tT{65.95}}) -- node[ml,below,fill=white,inner sep=0.6pt,pos=0.35]{ServerHello ... Finished} (\Cx,{\tT{71.5}});
 \fill[navyXL] (\Cx-1,{\tT{71.5}}) rectangle (\Cx+1,{\tT{89.3}});
 \node[f,anchor=west,text=greyD,align=left] at (\Cx+1.8,{\tT{81.4}}) {rest of curl's TLS time};
 % request to first byte

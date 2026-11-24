@@ -2,7 +2,9 @@
 
 The measurements behind `docs/report/main.pdf`, kept so the results can be reproduced. They were
 written before the package existed and do not import it. Run them from the repository root; most
-read a curl cookie jar under `data/cookies/` and write to `logs/` (both git-ignored).
+read a curl cookie jar under `data/cookies/` and write to `logs/` (both git-ignored). A few write
+into the current directory (`rp_*.json`, `preopen_*.json`, `*.out`); these hold account data and
+are git-ignored too, but do not commit them by hand.
 
 | Script | Report section | What it measures |
 |---|---|---|
@@ -15,6 +17,6 @@ read a curl cookie jar under `data/cookies/` and write to `logs/` (both git-igno
 | `logout_probe.py` | 2.2 | what `Auth/Logout` revokes (nothing on the server) |
 | `preopen_order.py` | 4 | **places a real order** before the open and records its fills |
 
-`preopen_order.py --live` sends a real contest order; `--monitor` only records. The organiser may
+`preopen_order.py --live` sends a real competition order; `--monitor` only records. The organiser may
 block an IP address that places 100 or more orders a day or sends bursts of traffic, so none of these
 scripts loops on writes, and live-feed requests keep the browser's 3-second pace.

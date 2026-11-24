@@ -13,12 +13,14 @@ poll(hub):                                                   & \\
 \I{16}negotiate; open WebSocket; handshake                   & \cm{token renewed first if older than 720\,s or refused (Section~\ref{sec:auth})}\\
 \I{16}lastT $\leftarrow$ 0                                   & \cm{a new connection starts from a snapshot}\\
 \I{12}send(RequestPortfolio(lastT, d = currBizDay, pfId))   & \\
-\I{12}p $\leftarrow$ await receive(timeout = 20\,s)          & \cm{one request in flight; pings answered while waiting}\\
-\I{12}if p = null: lastT $\leftarrow$ 0                      & \cm{empty reply: state kept, next reply is a snapshot}\\
+\I{12}p $\leftarrow$ await receive(deadline = send + 20\,s)   & \cm{one in flight; pings do not extend the deadline}\\
+\I{12}if p = null: lastT $\leftarrow$ 0                      & \cm{null reply: state kept, next reply is a snapshot}\\
 \I{12}elif p.pos $\neq$ null: state $\leftarrow$ p; lastT $\leftarrow$ p.t & \cm{snapshot: replace the state}\\
 \I{12}else: merge(state, p); lastT $\leftarrow$ p.t          & \cm{delta: merge; \code{t} is echoed, never computed with}\\
 \I{12}lastReply $\leftarrow$ now; n $\leftarrow$ 0           & \cm{recorded for the freshness check below}\\
-\I{8}except any error:                                       & \cm{502, 401, malformed JSON, timeout, closed socket}\\
+\I{8}except BlockedError:                                     & \cm{403 or 429 on negotiate: writes already halted}\\
+\I{12}close WebSocket; raise                                 & \cm{the feed task ends; no reconnect}\\
+\I{8}except any other error:                                 & \cm{502, 401, malformed JSON, timeout, closed socket}\\
 \I{12}close WebSocket; n $\leftarrow$ n + 1                  & \\
 \I{12}await sleep(uniform(0, min(30, 2$^{\mathrm{n}}$)))       & \cm{full-jitter backoff, at most 30\,s; then reconnect}\\
 \I{12}continue                                               & \\
@@ -28,6 +30,6 @@ merge(state, p):                                             & \\
 \I{8}add diff.added; drop diff.removed                       & \\
 \I{8}for (i, f) in diff.updated: state[int(i)] $\mid$= f     & \cm{changed fields only; keys are record \code{Id}s as strings}\\
 \I{4}state.bs $\mid$= p.bs\_updated                          & \cm{keeps net assets (\code{na}) current}\\[3pt]
-assertFresh():                                               & \cm{called before reads, orders and \code{wait_done}}\\
+assertFresh():                                               & \cm{called before reads, orders and \code{wait()}}\\
 \I{4}if now $-$ lastReply > 2 $\times$ 3 + 20 = 26\,s: raise StaleFeed & \cm{2 missed polls plus the 20\,s reply timeout}\\
-\end{tabular}}}{\code{updated} keys are record \code{Id}s sent as strings; snapshot \code{Id}s are integers, hence \code{int(i)}. $\mid$= merges a dict of changed fields into the stored record. \code{uniform(0, x)} draws a wait uniformly between 0 and \code{x} seconds; a success resets n to 0. Token renewal is lazy: the feed asks for a token only when it connects or reconnects, and an open WebSocket keeps working after the token expires (\figref{token}). In a 15-round test against snapshots with the same \code{t} on a second connection, the merged \code{pos} and \code{ords} records matched field for field in every round (Section~\ref{sec:feed}).}{\code{pytimefolio/hub.py} v0.1.0, DART Quant Team}
+\end{tabular}}}{\code{updated} keys are record \code{Id}s sent as strings; snapshot \code{Id}s are integers, hence \code{int(i)}. $\mid$= merges a dict of changed fields into the stored record. The 20\,s deadline is set once per request, so the server's pings every 15\,s cannot keep a lost reply waiting. \code{uniform(0, x)} draws a wait uniformly between 0 and \code{x} seconds; a success resets n to 0. Token renewal is lazy: the feed asks for a token only when it connects or reconnects, and an open WebSocket keeps working after the token expires (\figref{token}). In a 15-round test against snapshots with the same \code{t} on a second connection, the merged \code{pos} and \code{ords} records matched field for field in every round (Section~\ref{sec:feed}).}{\code{pytimefolio/hub.py} v0.1.0, DART Quant Team}

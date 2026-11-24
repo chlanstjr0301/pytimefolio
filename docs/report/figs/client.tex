@@ -1,9 +1,9 @@
 % OWNER: figs/client.tex. Edit only this file.
 \def\fclL#1#2{\hspace*{#1mm}\code{#2}}% one code line, indented #1 mm
 \def\fclC#1{\leavevmode{\rmfamily\color{greyD}#1}}% comment beside a code line
-\fig{client}{One class gives the strategy its state, its orders and the guideline status}[Use of the \code{Timefolio} client, version 0.1.0; comments on the right]{%
-{\fontsize{7.6}{9.6}\selectfont\begin{tabular}{@{}>{\RaggedRight\arraybackslash}p{84mm} >{\RaggedRight\arraybackslash}p{48mm}@{}}
-\fclL{0}{async with Timefolio(91, email=os.environ["EMAIL"],} & \fclC{contest 91; the password is passed in,}\\
+\fig[wide]{client}{One class gives the strategy its state, its orders and the guideline status}[Use of the \code{Timefolio} client, version 0.1.0; comments on the right]{%
+{\fontsize{7.6}{9.6}\selectfont\begin{tabular}{@{}>{\RaggedRight\arraybackslash}p{106mm} >{\RaggedRight\arraybackslash}p{70mm}@{}}
+\fclL{0}{async with Timefolio(91, email=os.environ["EMAIL"],} & \fclC{competition 91; the password is passed in,}\\
 \fclL{28.4}{password=os.environ["PASSWORD"]) as tf:} & \fclC{never stored; the cookie jar is saved}\\[2pt]
 \fclL{4}{w = tf.weights()} & \fclC{\code{prodId} $\rightarrow$ current \code{wei} (\%)}\\
 \fclL{4}{tf.orders_left()} & \fclC{80 minus today's new orders and stops}\\[2pt]

@@ -53,7 +53,7 @@ class Hub:
         if hs.get("error"):
             raise ConnectionError(f"SignalR handshake: {hs['error']}")
         self._last_t = 0                                             # 새 연결은 스냅샷부터
-        log.info("허브 연결 (pfId=%s)", self.pf_id)
+        log.info("허브 연결")
 
     async def close(self) -> None:
         if self.ws is not None:

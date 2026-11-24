@@ -6,5 +6,5 @@ LIG Nex1, buy at 08:30 (\ref{sec:orders}) & 0.0423 & 0.3 & 7.1 & 7 & 7 & 7\\\row
 Samsung Electronics, buy at 09:15 (\ref{sec:orders}) & 0.0226 & 0.3 & 13.3 & 13 & 13 & 13\\\rowsep
 Samsung Electronics, buy (\ref{sec:wrappertests}) & 0.0226 & 0.1 & 4.4 & 4 & 4 & 4\\\rowsep
 LIG Nex1, sell (\ref{sec:wrappertests}) & 0.0426 & 0.1 & 2.3 & 2 & 2 & 2\\\rowsep
-\hl Samsung Electronics, buy at 10:26 and at 10:33, \code{live_rounding} (\ref{sec:wrappertests}) & 0.0227 & 0.04 & 1.76 & 1 & 2 & 1\\
+\hl Samsung Electronics, buy at 10:26 and at 10:33, \code{live_rounding} (\ref{sec:oneshare}) & 0.0227 & 0.04 & 1.76 & 1 & 2 & 1\\
 \end{tabularx}}}{One share's weight = price $\times$ 100 / net assets (\code{bs.na}), at the feed's price, in percent of net assets: 0.0226 and 0.0426 at 09:52, 0.0227 at 10:33. The 08:30 share weight is 0.3 / 7.1, from the 7.1 shares' worth of Section~\ref{sec:orders}. The first 4 rows fit both rules, so they cannot tell them apart. The highlighted row separates them: 1.76 shares' worth rounds down to 1 and to the nearest whole number to 2, and the server asked for 1 on both orders (Ids 1650693 and 1650719, stopped at once, 0 filled). The 09:15 row uses the 09:52 share weight; 13 shares fits any share weight from 0.0214 to 0.0231.}{DART Quant Team; \code{tests/live/live_rounding.py}}

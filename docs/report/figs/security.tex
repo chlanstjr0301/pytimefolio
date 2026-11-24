@@ -2,10 +2,10 @@
 \fig[wide]{security}{The cookie jar is the one secret the wrapper stores}[Secrets and personal data that pass through \code{pytimefolio}, and how each is kept]{%
 {\tabfont\begin{tabularx}{\linewidth}{>{\RaggedRight\arraybackslash}p{30mm} >{\RaggedRight\arraybackslash}p{62mm} >{\RaggedRight\arraybackslash}X}
 \thd{Item} & \thd{What it allows or contains} & \thd{How the wrapper keeps it}\\
-\hl Cookie jar & A bearer credential valid for 7 days from login: anyone holding it can renew access tokens; \code{Logout} does not revoke it; whether a password change revokes it is untested & Stored in \code{~/.config/pytimefolio/session.json}, mode 0600, outside the repository; written atomically at login and after each renewal\\\rowsep
+\hl Cookie jar & Renews access tokens for 7 days from login; it keeps renewing after \code{Logout}; its behaviour after a password change is untested & Stored in \code{~/.config/pytimefolio/session.json}, mode 0600, outside the repository; written atomically at login and after each renewal\\\rowsep
 Password & Logs in and creates a new 7-day cookie jar & Not stored by the wrapper; the caller passes it to the constructor, for example from an environment variable\\\rowsep
 Access token & Authenticates every REST and feed request for 900\,s & Kept in memory and sent only in the \code{Authorization} header; kept out of URLs and logs\\\rowsep
-Login reply & Personal data: phone number, date of birth & Never logged\\\rowsep
+Login reply & Personal fields (contact details) & Never logged\\\rowsep
 Position records & The account holder's name and nickname (\code{userNm}, \code{userNick}) & Never logged\\\rowsep
 Repository & Public on GitHub & \code{.env}, \code{data/} and \code{logs/} are in \code{.gitignore}\\
 \end{tabularx}}}{Shaded: the only secret written to disk. Token and cookie lifetimes are from Section~\ref{sec:auth}. The password-change test is listed with the open questions in Section~\ref{sec:validity}.}{DART Quant Team; code at \code{src/pytimefolio}}
